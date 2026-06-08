@@ -2,7 +2,6 @@ package com.auto.odo.presentation.ui
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,17 +19,48 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.domain.usecase.LogItem
 import com.auto.odo.presentation.viewmodel.LogsFeedViewModel
+import com.auto.odo.presentation.viewmodel.currencySymbol
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogsFeedScreen(
-    viewModel: LogsFeedViewModel
-) {
+fun LogsFeedScreen(viewModel: LogsFeedViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show undo snackbar whenever pendingDeleteLog appears
+    LaunchedEffect(uiState.pendingDeleteLog) {
+        val log = uiState.pendingDeleteLog ?: return@LaunchedEffect
+        val label = when (log) {
+            is LogItem.Fuel -> "Fuel log"
+            is LogItem.Service -> "Service log"
+            is LogItem.Expense -> "Expense"
+            is LogItem.Trip -> "Trip"
+        }
+        val result = snackbarHostState.showSnackbar(
+            message = "$label deleted",
+            actionLabel = "UNDO",
+            duration = SnackbarDuration.Short  // ~4 s
+        )
+        when (result) {
+            SnackbarResult.ActionPerformed -> viewModel.undoDelete()
+            SnackbarResult.Dismissed -> viewModel.commitPendingDelete()
+        }
+    }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(12.dp),
+                    containerColor = MaterialTheme.colorScheme.inverseSurface,
+                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                    actionColor = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
         topBar = {
             TopAppBar(
                 title = { Text("Log Feed", fontWeight = FontWeight.Bold) },
@@ -53,22 +83,15 @@ fun LogsFeedScreen(
                 return@Scaffold
             }
 
-            // Top Filter Chips
+            // Filter chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val filters = listOf(
-                    Pair(null, "All"),
-                    Pair("fuel", "Fuel"),
-                    Pair("service", "Service"),
-                    Pair("expense", "Expense"),
-                    Pair("trip", "Trips")
-                )
-
-                filters.forEach { (filterType, name) ->
+                listOf(null to "All", "fuel" to "Fuel", "service" to "Service",
+                    "expense" to "Expense", "trip" to "Trips").forEach { (filterType, name) ->
                     val isSelected = uiState.activeFilter == filterType
                     FilterChip(
                         selected = isSelected,
@@ -84,28 +107,45 @@ fun LogsFeedScreen(
                 }
             } else if (uiState.logs.isEmpty()) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "No logs found matching this filter.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("No logs found matching this filter.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
+                val currency = uiState.selectedVehicle?.currency ?: "INR"
+                val distUnit = uiState.selectedVehicle?.distanceUnit ?: "km"
+                val pendingId = uiState.pendingDeleteLog?.id
+                val pendingType = uiState.pendingDeleteLog?.javaClass?.simpleName
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(uiState.logs, key = { "${it.javaClass.simpleName}_${it.id}" }) { log ->
-                        SwipeToDeleteContainer(
-                            item = log,
-                            onDelete = { viewModel.deleteLog(log) }
+                    items(
+                        uiState.logs,
+                        key = { "${it.javaClass.simpleName}_${it.id}" }
+                    ) { log ->
+                        // Hide (animate out) the item that's pending deletion
+                        val isPendingDelete = log.id == pendingId &&
+                            log.javaClass.simpleName == pendingType
+
+                        AnimatedVisibility(
+                            visible = !isPendingDelete,
+                            exit = shrinkVertically() + fadeOut()
                         ) {
-                            LogItemCard(log = log, currency = uiState.selectedVehicle?.currency ?: "INR")
+                            SwipeToDeleteContainer(
+                                item = log,
+                                onDelete = { viewModel.deleteLog(log) }
+                            ) {
+                                LogItemCard(
+                                    log = log,
+                                    currency = currency,
+                                    distUnit = distUnit
+                                )
+                            }
                         }
                     }
                 }
@@ -119,7 +159,6 @@ fun LogsFeedScreen(
 fun <T> SwipeToDeleteContainer(
     item: T,
     onDelete: (T) -> Unit,
-    animationDuration: Int = 500,
     content: @Composable (T) -> Unit
 ) {
     val currentItem by rememberUpdatedState(item)
@@ -158,15 +197,14 @@ fun <T> SwipeToDeleteContainer(
                 )
             }
         },
-        content = {
-            content(item)
-        }
+        content = { content(item) }
     )
 }
 
 @Composable
-fun LogItemCard(log: LogItem, currency: String) {
+fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
     val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(log.date))
+    val sym = currencySymbol(currency)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -184,7 +222,7 @@ fun LogItemCard(log: LogItem, currency: String) {
                     Icons.Default.LocalGasStation,
                     MaterialTheme.colorScheme.primary,
                     "Fuel Fill-Up"
-                ) to "${String.format("%.2f", log.quantity)} L @ ${currency}${String.format("%.2f", log.pricePerUnit)}/L"
+                ) to "${String.format("%.2f", log.quantity)} L · ${sym}${String.format("%.2f", log.pricePerUnit)}/L"
 
                 is LogItem.Service -> Triple(
                     Icons.Default.Build,
@@ -202,7 +240,7 @@ fun LogItemCard(log: LogItem, currency: String) {
                     Icons.Default.DirectionsCar,
                     MaterialTheme.colorScheme.primary,
                     "Trip (${log.purpose})"
-                ) to "Distance: ${String.format("%.1f", log.endOdo - log.startOdo)} km"
+                ) to "Distance: ${String.format("%.1f", log.endOdo - log.startOdo)} $distUnit"
             }
             val (icon, tint, title) = triple
 
@@ -228,14 +266,16 @@ fun LogItemCard(log: LogItem, currency: String) {
             Column(horizontalAlignment = Alignment.End) {
                 if (log is LogItem.Fuel) {
                     Text(
-                        text = "Odo: ${log.odometer.toInt()}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold
+                        text = "Odo: ${log.odometer.toInt()} $distUnit",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                 }
                 if (log.totalCost > 0) {
                     Text(
-                        text = "$currency ${String.format("%.2f", log.totalCost)}",
+                        text = "$sym ${String.format("%.2f", log.totalCost)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary

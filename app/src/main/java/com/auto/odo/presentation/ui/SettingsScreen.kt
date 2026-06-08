@@ -4,9 +4,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,10 +24,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.data.entity.VehicleEntity
+import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
 import com.auto.odo.presentation.viewmodel.SettingsViewModel
+import com.auto.odo.presentation.viewmodel.currencySymbol
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,32 +40,19 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // SAF launcher for IMPORT — opens a folder picker
-    val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.onImportFolderSelected(uri)
-        }
+    // SAF launchers
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.onImportFolderSelected(uri)
+    }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) viewModel.onExportFolderSelected(uri)
     }
 
-    // SAF launcher for EXPORT — opens a folder picker
-    val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.onExportFolderSelected(uri)
-        }
-    }
-
-    // Show snackbar whenever a message appears
+    // Snackbar
     LaunchedEffect(uiState.successMessage, uiState.errorMessage) {
         val msg = uiState.successMessage ?: uiState.errorMessage
         if (msg != null) {
-            snackbarHostState.showSnackbar(
-                message = msg,
-                duration = SnackbarDuration.Long
-            )
+            snackbarHostState.showSnackbar(message = msg, duration = SnackbarDuration.Long)
             viewModel.clearMessage()
         }
     }
@@ -66,6 +62,35 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         ImportConfirmationDialog(
             onConfirm = { viewModel.confirmImport() },
             onDismiss = { viewModel.dismissImportDialog() }
+        )
+    }
+
+    // Delete vehicle confirmation dialog
+    uiState.vehiclePendingDelete?.let { vehicle ->
+        DeleteVehicleDialog(
+            vehicleName = vehicle.name,
+            onConfirm = { viewModel.confirmDeleteVehicle() },
+            onDismiss = { viewModel.dismissDeleteDialog() }
+        )
+    }
+
+    // Edit currency dialog
+    uiState.vehiclePendingCurrencyEdit?.let { vehicle ->
+        EditCurrencyDialog(
+            vehicleName = vehicle.name,
+            selectedCurrency = uiState.editCurrencySelected,
+            onCurrencySelected = { viewModel.onEditCurrencySelected(it) },
+            onConfirm = { viewModel.saveCurrencyEdit() },
+            onDismiss = { viewModel.dismissCurrencyEdit() }
+        )
+    }
+
+    // Add vehicle bottom sheet
+    if (uiState.showAddVehicleSheet) {
+        AddVehicleSheet(
+            uiState = uiState,
+            viewModel = viewModel,
+            onDismiss = { viewModel.closeAddVehicleSheet() }
         )
     }
 
@@ -79,15 +104,27 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
-            // ── Header ─────────────────────────────────────────────────────────
             SettingsHeader()
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
-            // ── Data Management Section ────────────────────────────────────────
+            // ── Vehicles ──────────────────────────────────────────────────────
+            SectionLabel("Vehicles")
+
+            VehiclesSection(
+                vehicles = uiState.vehicles,
+                currentVehicleId = uiState.currentVehicleId,
+                onSelect = { viewModel.selectVehicle(it.id) },
+                onDelete = { viewModel.requestDeleteVehicle(it) },
+                onEditCurrency = { viewModel.openCurrencyEdit(it) },
+                onAdd = { viewModel.openAddVehicleSheet() }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── Data Management ───────────────────────────────────────────────
             SectionLabel("Data Management")
 
-            // Import Card
             DataActionCard(
                 icon = Icons.Default.FileDownload,
                 iconTint = MaterialTheme.colorScheme.tertiary,
@@ -102,7 +139,6 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Export Card
             DataActionCard(
                 icon = Icons.Default.FileUpload,
                 iconTint = MaterialTheme.colorScheme.secondary,
@@ -117,7 +153,6 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // ── Info Section ───────────────────────────────────────────────────
             SectionLabel("About CSV Format")
             CsvInfoCard()
 
@@ -127,7 +162,525 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Header
+//  Vehicles Section
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun VehiclesSection(
+    vehicles: List<VehicleEntity>,
+    currentVehicleId: Long?,
+    onSelect: (VehicleEntity) -> Unit,
+    onDelete: (VehicleEntity) -> Unit,
+    onEditCurrency: (VehicleEntity) -> Unit,
+    onAdd: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            if (vehicles.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Outlined.DirectionsCar,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(40.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "No vehicles yet",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            } else {
+                vehicles.forEachIndexed { index, vehicle ->
+                    VehicleRow(
+                        vehicle = vehicle,
+                        isActive = vehicle.id == currentVehicleId,
+                        onSelect = { onSelect(vehicle) },
+                        onEditCurrency = { onEditCurrency(vehicle) },
+                        onDelete = { onDelete(vehicle) }
+                    )
+                    if (index < vehicles.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+
+            // Add vehicle row
+            if (vehicles.isNotEmpty()) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onAdd() }
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "Add vehicle",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Add Vehicle",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VehicleRow(
+    vehicle: VehicleEntity,
+    isActive: Boolean,
+    onSelect: () -> Unit,
+    onEditCurrency: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onSelect() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Vehicle type icon
+        val vehicleIcon = if (vehicle.type == "Bike") Icons.Default.TwoWheeler else Icons.Default.DirectionsCar
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(
+                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    else MaterialTheme.colorScheme.surfaceVariant
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = vehicleIcon,
+                contentDescription = null,
+                tint = if (isActive) MaterialTheme.colorScheme.primary
+                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = vehicle.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (isActive) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    ) {
+                        Text(
+                            text = "Active",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "${vehicle.type} · ${vehicle.distanceUnit} · ${vehicle.fuelUnit} · ${currencySymbol(vehicle.currency)} ${vehicle.currency}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Edit currency
+        IconButton(onClick = onEditCurrency) {
+            Icon(
+                imageVector = Icons.Default.CurrencyExchange,
+                contentDescription = "Change currency for ${vehicle.name}",
+                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        // Delete
+        IconButton(onClick = onDelete) {
+            Icon(
+                imageVector = Icons.Default.DeleteOutline,
+                contentDescription = "Delete ${vehicle.name}",
+                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Add Vehicle Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddVehicleSheet(
+    uiState: com.auto.odo.presentation.viewmodel.SettingsUiState,
+    viewModel: SettingsViewModel,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Add Vehicle",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Configure your vehicle's preferences",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Name
+            OutlinedTextField(
+                value = uiState.newVehicleName,
+                onValueChange = { viewModel.onNewVehicleNameChanged(it) },
+                label = { Text("Vehicle Name") },
+                placeholder = { Text("e.g. My Bike, Family Car") },
+                singleLine = true,
+                isError = uiState.addVehicleError != null,
+                supportingText = uiState.addVehicleError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Type
+            SheetOptionRow(
+                label = "Type",
+                options = listOf("Bike", "Car"),
+                selected = uiState.newVehicleType,
+                onSelect = { viewModel.onNewVehicleTypeChanged(it) }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Distance unit
+            SheetOptionRow(
+                label = "Distance",
+                options = listOf("km", "miles"),
+                selected = uiState.newVehicleDistUnit,
+                onSelect = { viewModel.onNewVehicleDistUnitChanged(it) }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Fuel unit
+            SheetOptionRow(
+                label = "Fuel",
+                options = listOf("Liters", "Gallons"),
+                selected = uiState.newVehicleFuelUnit,
+                onSelect = { viewModel.onNewVehicleFuelUnitChanged(it) }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Currency
+            SheetOptionRow(
+                label = "Currency",
+                options = SUPPORTED_CURRENCIES.map { it.first },
+                selected = uiState.newVehicleCurrency,
+                onSelect = { viewModel.onNewVehicleCurrencyChanged(it) },
+                labelMapper = { code -> "${currencySymbol(code)} $code" }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = { viewModel.saveNewVehicle() },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Add Vehicle", style = MaterialTheme.typography.labelLarge)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Cancel")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetOptionRow(
+    label: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    labelMapper: (String) -> String = { it }
+) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            options.forEach { option ->
+                val isSelected = option == selected
+                Surface(
+                    onClick = { onSelect(option) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (!isSelected) Modifier.border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant,
+                                RoundedCornerShape(10.dp)
+                            ) else Modifier
+                        )
+                ) {
+                    Text(
+                        text = labelMapper(option),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Edit Currency Dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun EditCurrencyDialog(
+    vehicleName: String,
+    selectedCurrency: String,
+    onCurrencySelected: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                Icons.Default.CurrencyExchange,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary
+            )
+        },
+        title = {
+            Text(
+                "Currency — $vehicleName",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SUPPORTED_CURRENCIES.forEach { (code, symbol) ->
+                    val isSelected = code == selectedCurrency
+                    Surface(
+                        onClick = { onCurrencySelected(code) },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.outlineVariant,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = symbol,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = code,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = currencyFullName(code),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, shape = RoundedCornerShape(10.dp)) { Text("Apply") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
+        }
+    )
+}
+
+private fun currencyFullName(code: String): String = when (code) {
+    "INR" -> "Indian Rupee"
+    "USD" -> "US Dollar"
+    "EUR" -> "Euro"
+    "GBP" -> "British Pound"
+    "AED" -> "UAE Dirham"
+    "BRL" -> "Brazilian Real"
+    else -> code
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Delete Confirmation Dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun DeleteVehicleDialog(
+    vehicleName: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        icon = {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error
+            )
+        },
+        title = {
+            Text(
+                "Delete \"$vehicleName\"?",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text(
+                "This will permanently delete this vehicle and ALL its fuel logs, service records, expenses, and trips.\n\nThis cannot be undone.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                shape = RoundedCornerShape(10.dp)
+            ) { Text("Delete") }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
+        }
+    )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Shared / reused composables
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -175,7 +728,7 @@ private fun SettingsHeader() {
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = "Backup, restore and manage your data",
+                        text = "Manage vehicles, backup & restore data",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -184,10 +737,6 @@ private fun SettingsHeader() {
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Section label
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun SectionLabel(text: String) {
@@ -200,10 +749,6 @@ private fun SectionLabel(text: String) {
         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
     )
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Data Action Card (Import / Export)
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun DataActionCard(
@@ -220,9 +765,7 @@ private fun DataActionCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -234,21 +777,11 @@ private fun DataActionCard(
                         .background(iconTint.copy(alpha = 0.14f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = iconTint,
-                        modifier = Modifier.size(26.dp)
-                    )
+                    Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodySmall,
@@ -257,9 +790,7 @@ private fun DataActionCard(
                     )
                 }
             }
-
             Spacer(modifier = Modifier.height(16.dp))
-
             Button(
                 onClick = onActionClick,
                 enabled = !isLoading,
@@ -268,25 +799,14 @@ private fun DataActionCard(
                 colors = ButtonDefaults.buttonColors(containerColor = accentColor)
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
                     Spacer(modifier = Modifier.width(8.dp))
                 }
-                Text(
-                    text = actionLabel,
-                    style = MaterialTheme.typography.labelLarge
-                )
+                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
             }
         }
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  CSV Info Card
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun CsvInfoCard() {
@@ -295,123 +815,58 @@ private fun CsvInfoCard() {
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(20.dp)
-                )
+                Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "4 CSV Files",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("4 CSV Files", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(modifier = Modifier.height(10.dp))
-            val files = listOf(
+            listOf(
                 "Vehicles.csv" to "Vehicle definitions",
                 "Fuel_Log.csv" to "Fuel, service & expense records",
                 "Services.csv" to "Service templates (exported only)",
                 "Trip_Log.csv" to "Trip records"
-            )
-            files.forEach { (name, desc) ->
-                Row(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.InsertDriveFile,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(16.dp).padding(top = 2.dp)
-                    )
+            ).forEach { (name, desc) ->
+                Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp).padding(top = 2.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(
-                            text = name,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
+                        Text(name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
                     }
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "⚠ Import will replace all existing data.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                fontWeight = FontWeight.Medium
-            )
+            Text("⚠ Import will replace all existing data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Import Confirmation Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
-private fun ImportConfirmationDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
+private fun ImportConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(20.dp),
-        icon = {
-            Icon(
-                imageVector = Icons.Default.Warning,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.error
-            )
-        },
-        title = {
-            Text(
-                text = "Replace All Data?",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-        },
+        icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Replace All Data?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
         text = {
             Text(
-                text = "This will permanently delete all current vehicles, fuel logs, service records, expenses and trips — then replace them with data from the selected CSV files.\n\nThis action cannot be undone.",
+                "This will permanently delete all current vehicles, fuel logs, service records, expenses and trips — then replace them with data from the selected CSV files.\n\nThis action cannot be undone.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
         confirmButton = {
-            Button(
-                onClick = onConfirm,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                ),
-                shape = RoundedCornerShape(10.dp)
-            ) {
+            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = RoundedCornerShape(10.dp)) {
                 Text("Yes, Replace")
             }
         },
         dismissButton = {
-            OutlinedButton(
-                onClick = onDismiss,
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("Cancel")
-            }
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
         }
     )
 }
