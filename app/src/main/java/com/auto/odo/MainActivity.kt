@@ -20,12 +20,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.auto.odo.presentation.theme.OdoTheme
-import com.auto.odo.presentation.ui.AddFillUpScreen
-import com.auto.odo.presentation.ui.DashboardScreen
-import com.auto.odo.presentation.ui.LogsFeedScreen
-import com.auto.odo.presentation.viewmodel.DashboardViewModel
-import com.auto.odo.presentation.viewmodel.LogsFeedViewModel
-import com.auto.odo.presentation.viewmodel.AddFillUpViewModel
+import com.auto.odo.presentation.ui.*
+import com.auto.odo.presentation.viewmodel.*
 import dagger.hilt.android.AndroidEntryPoint
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
@@ -34,6 +30,10 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
     object Analytics : Screen("analytics", "Analytics", Icons.Default.Speed)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
     object AddFillUp : Screen("add_fillup", "Add Fillup", null)
+    object AddService : Screen("add_service", "Add Service", null)
+    object AddExpense : Screen("add_expense", "Add Expense", null)
+    object AddTrip : Screen("add_trip", "Add Trip", null)
+    object UpdateOdometer : Screen("update_odo", "Update Odometer", null)
 }
 
 @AndroidEntryPoint
@@ -65,7 +65,13 @@ fun MainAppScreen() {
     Scaffold(
         bottomBar = {
             // Hide bottom bar on the form screen (AddFillUp) to provide full screen real estate
-            if (currentRoute != Screen.AddFillUp.route) {
+            val isFormRoute = currentRoute == Screen.AddFillUp.route ||
+                    currentRoute == Screen.AddService.route ||
+                    currentRoute == Screen.AddExpense.route ||
+                    currentRoute == Screen.AddTrip.route ||
+                    currentRoute == Screen.UpdateOdometer.route
+
+            if (!isFormRoute) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 8.dp
@@ -103,6 +109,18 @@ fun MainAppScreen() {
                     viewModel = dashboardViewModel,
                     onNavigateToAddFillUp = {
                         navController.navigate(Screen.AddFillUp.route)
+                    },
+                    onNavigateToAddService = {
+                        navController.navigate(Screen.AddService.route)
+                    },
+                    onNavigateToAddExpense = {
+                        navController.navigate(Screen.AddExpense.route)
+                    },
+                    onNavigateToAddTrip = {
+                        navController.navigate(Screen.AddTrip.route)
+                    },
+                    onNavigateToUpdateOdo = {
+                        navController.navigate(Screen.UpdateOdometer.route)
                     },
                     onNavigateToLogs = {
                         navController.navigate(Screen.Logs.route)
@@ -173,6 +191,46 @@ fun MainAppScreen() {
                 val addFillUpViewModel: AddFillUpViewModel = hiltViewModel()
                 AddFillUpScreen(
                     viewModel = addFillUpViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.AddService.route) {
+                val addServiceViewModel: AddServiceViewModel = hiltViewModel()
+                AddServiceScreen(
+                    viewModel = addServiceViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.AddExpense.route) {
+                val addExpenseViewModel: AddExpenseViewModel = hiltViewModel()
+                AddExpenseScreen(
+                    viewModel = addExpenseViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.AddTrip.route) {
+                val addTripViewModel: AddTripViewModel = hiltViewModel()
+                AddTripScreen(
+                    viewModel = addTripViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.UpdateOdometer.route) {
+                val updateOdometerViewModel: UpdateOdometerViewModel = hiltViewModel()
+                UpdateOdometerScreen(
+                    viewModel = updateOdometerViewModel,
                     onNavigateBack = {
                         navController.popBackStack()
                     }

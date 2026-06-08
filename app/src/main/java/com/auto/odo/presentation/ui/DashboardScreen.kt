@@ -43,18 +43,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     onNavigateToAddFillUp: () -> Unit,
+    onNavigateToAddService: () -> Unit,
+    onNavigateToAddExpense: () -> Unit,
+    onNavigateToAddTrip: () -> Unit,
+    onNavigateToUpdateOdo: () -> Unit,
     onNavigateToLogs: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var isVehicleMenuExpanded by remember { mutableStateOf(false) }
     var showAddVehicleDialog by remember { mutableStateOf(false) }
     var isFabExpanded by remember { mutableStateOf(false) }
-
-    // Dialog flags for minor actions
-    var showAddServiceDialog by remember { mutableStateOf(false) }
-    var showAddExpenseDialog by remember { mutableStateOf(false) }
-    var showAddTripDialog by remember { mutableStateOf(false) }
-    var showUpdateOdoDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -162,7 +160,7 @@ fun DashboardScreen(
                         SmallFloatingActionButton(
                             onClick = {
                                 isFabExpanded = false
-                                showAddServiceDialog = true
+                                onNavigateToAddService()
                             },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -177,7 +175,7 @@ fun DashboardScreen(
                         SmallFloatingActionButton(
                             onClick = {
                                 isFabExpanded = false
-                                showAddExpenseDialog = true
+                                onNavigateToAddExpense()
                             },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -192,7 +190,7 @@ fun DashboardScreen(
                         SmallFloatingActionButton(
                             onClick = {
                                 isFabExpanded = false
-                                showAddTripDialog = true
+                                onNavigateToAddTrip()
                             },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -207,7 +205,7 @@ fun DashboardScreen(
                         SmallFloatingActionButton(
                             onClick = {
                                 isFabExpanded = false
-                                showUpdateOdoDialog = true
+                                onNavigateToUpdateOdo()
                             },
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
@@ -297,19 +295,6 @@ fun DashboardScreen(
         )
     }
 
-    // Minor dialog placeholders to prevent crash
-    if (showAddServiceDialog) {
-        PlaceholderDialog(title = "Add Service", onDismiss = { showAddServiceDialog = false })
-    }
-    if (showAddExpenseDialog) {
-        PlaceholderDialog(title = "Add Expense", onDismiss = { showAddExpenseDialog = false })
-    }
-    if (showAddTripDialog) {
-        PlaceholderDialog(title = "Add Trip", onDismiss = { showAddTripDialog = false })
-    }
-    if (showUpdateOdoDialog) {
-        PlaceholderDialog(title = "Update Odometer", onDismiss = { showUpdateOdoDialog = false })
-    }
 }
 
 @Composable
@@ -827,16 +812,4 @@ fun AddVehicleDialog(
     }
 }
 
-@Composable
-fun PlaceholderDialog(title: String, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text("This is a mockup action interface. The prompt focused specifically on the dynamic 'Add Fill-Up' flow validation engine, interactive Bezier charts, and bottom navigation setup.") },
-        confirmButton = {
-            Button(onClick = onDismiss) {
-                Text("Dismiss")
-            }
-        }
-    )
-}
+

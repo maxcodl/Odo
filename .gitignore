@@ -19,3 +19,4 @@ Trip_Log.csv
 Services.csv
 /AutoBahn/.kotlin
 *.logs
+.kotlin/

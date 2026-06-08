@@ -27,19 +27,19 @@ remains. Read all four sections before touching any code.
                    navigation3)
   Database       : Room DB v2.6.1 (relational SQL, 5 tables)
   Session State  : Jetpack DataStore Preferences
-  DI Framework   : Hilt (Dagger-Hilt) v2.51.1
+  DI Framework   : Hilt (Dagger-Hilt) v2.52
   Async Engine   : Kotlin Coroutines + StateFlow (unidirectional flow)
   Build System   : Gradle with Kotlin DSL (build.gradle.kts)
-  KSP            : v2.3.20-1.0.29 (used for Room & Hilt code generation)
+  KSP            : v2.1.10-1.0.31 (used for Room & Hilt code generation)
 
 All dependencies are declared in:
   gradle/libs.versions.toml  (version catalog)
 
 Key dependency versions in the catalog:
-  androidGradlePlugin = 9.0.1
-  kotlin              = 2.3.20
+  androidGradlePlugin = 8.9.1
+  kotlin              = 2.1.10
   room                = 2.6.1
-  hilt                = 2.51.1
+  hilt                = 2.52
   datastore           = 1.1.1
   navigationCompose   = 2.8.5
   androidxLifecycle   = 2.10.0
@@ -54,7 +54,8 @@ app/src/main/java/com/auto/odo/
 │     Entry point. Sets up edge-to-edge layout, NavHost with
 │     composable routes, and a Material 3 Bottom Navigation Bar
 │     (4 tabs: Dashboard, Logs, Analytics, Settings). The BottomBar is
-│     hidden on the AddFillUp route for full-screen form real estate.
+│     hidden on all input form routes (AddFillUp, AddService, AddExpense,
+│     AddTrip, UpdateOdometer) to provide full screen real estate.
 │     Uses Predictive Back (Android 16 / SDK 36) — BackHandler /
 │     PredictiveBackHandler must be used; do NOT intercept old system
 │     back events.
@@ -92,9 +93,8 @@ app/src/main/java/com/auto/odo/
 │   │         Contains 5 DAO interfaces (one per entity):
 │   │         VehicleDao, FuelLogDao, ServiceLogDao,
 │   │         ExpenseLogDao, TripLogDao.
-│   │         FuelLogDao includes two critical odometer bound queries:
-│   │           getClosestLogBefore(vehicleId, date) -> FuelLogEntity?
-│   │           getClosestLogAfter(vehicleId, date)  -> FuelLogEntity?
+│   │         FuelLogDao, ServiceLogDao, and TripLogDao support
+│   │         aggregate summaries and odometer boundaries.
 │   │
 │   ├── entity/
 │   │   ├── VehicleEntity.kt
@@ -140,8 +140,6 @@ app/src/main/java/com/auto/odo/
 │             GetRolling30DayMetricsUseCase
 │               — Produces DashboardMetrics (fuelCostLast30Days,
 │                 averageEfficiency, fillUpCountLast30Days).
-│               — Efficiency calc skips partial fill-ups and uses
-│                 only full-tank pairs for accurate readings.
 │             GetRecentLogsUseCase
 │               — Combines fuel+service+expense+trip flows,
 │                 sorts by date descending, takes last N entries.
@@ -150,10 +148,9 @@ app/src/main/java/com/auto/odo/
 │                 string (null=All, "fuel", "service", "expense",
 │                 "trip") for the Logs tab chip filters.
 │             ValidateOdometerUseCase
-│               — Checks new odometer input against the chronological
-│                 neighbors (closest before & after by date).
-│               — Returns: Valid | InvalidBefore(limit) |
-│                          InvalidAfter(limit)
+│               — Checks new odometer input chronologically against
+│                 neighboring bounds (before & after by date) across
+│                 all log categories (Fuel, Service, Trip).
 │
 ├── di/
 │   └── AppModule.kt
@@ -174,57 +171,37 @@ app/src/main/java/com/auto/odo/
     │         match background for true edge-to-edge.
     │
     ├── viewmodel/
-    │   └── ViewModels.kt
-    │         DashboardViewModel
-    │           — Collects vehicles list + selected vehicle from
-    │             DataStore. Triggers metric, chart, and log flows
-    │             reactively on vehicle switch.
-    │           — Calculates Bezier chart points from ordered fuel
-    │             logs (skips partials, normalizes to per-unit eff).
-    │         LogsFeedViewModel
-    │           — Flat-maps selectedVehicleId to filtered log stream.
-    │           — deleteLog() reconstructs full entities from LogItem
-    │             sealed class to execute Room delete.
-    │         AddFillUpViewModel
-    │           — Holds AddFillUpUiState (single immutable state).
-    │           — Bidirectional calculation engine on qty/ppu/cost.
-    │           — Pre-populates odometer placeholder from last known.
-    │           — Validates chronological odometer on date or odo
-    │             field change.
-    │           — Converts display units -> base units before Room
-    │             insert (miles->km, gallons->liters).
+    │   ├── DashboardViewModel.kt
+    │   │     Manages selected vehicle, rolling metrics, and chart points.
+    │   ├── LogsFeedViewModel.kt
+    │   │     Displays filtered list of logs with deletion support.
+    │   ├── AddFillUpViewModel.kt
+    │   │     Bidirectional engine and saving for fuel logs.
+    │   ├── AddServiceViewModel.kt
+    │   │     Service log creation with drop-down service types.
+    │   ├── AddExpenseViewModel.kt
+    │   │     Expense log creation with custom categories.
+    │   ├── AddTripViewModel.kt
+    │   │     Trip log creation with start/end odometer calculations.
+    │   └── UpdateOdometerViewModel.kt
+    │         Standalone odometer logs saved under Service Logs.
     │
     └── ui/
         ├── DashboardScreen.kt
-        │     Vehicle selector ExposedDropdownMenuBox in TopAppBar.
-        │     3 ElevatedCard metric tiles (Fuel Cost, Avg Efficiency,
-        │     Fill-Up Count).
-        │     BezierChart composable on Canvas with:
-        │       - remember(points) for coordinate memoization.
-        │       - Cubic Bezier path + vertical gradient fill.
-        │       - detectTapGestures for interactive tooltip overlay.
-        │       - Empty/single-point guard (shows placeholder icon).
-        │     Multi-FAB speed-dial: AnimatedVisibility with
-        │       slideInVertically + fadeIn transitions (NOT a static
-        │       column). Each mini-FAB reveals a labeled action row.
-        │     "Add Vehicle" dialog: radio groups for type/unit config.
-        │
+        │     ExposedDropdownMenuBox vehicle selector, metrics summaries,
+        │     Canvas-based Bezier chart, and multi-FAB speed-dial routing.
         ├── LogsFeedScreen.kt
-        │     FilterChip row (All / Fuel / Service / Expense / Trips).
-        │     LazyColumn of LogItemCard composables.
-        │     SwipeToDismissBox (EndToStart) wired to deleteLog().
-        │     Empty-state and loading-state guards present.
-        │
-        └── AddFillUpScreen.kt
-              Full-screen scrollable form (verticalScroll).
-              Active vehicle banner card.
-              DatePickerDialog triggered from read-only OutlinedTextField.
-              Odometer field with supportingText validation errors.
-              Quantity / PricePerUnit / TotalCost bidirectional fields.
-              Partial-fill Switch toggle.
-              Station name + Notes OutlinedTextFields.
-              Mock receipt attachment container (tap to simulate).
-              Save button with loading spinner; auto-navigate on success.
+        │     Filter chips, LazyColumn, swipe-to-delete, and empty states.
+        ├── AddFillUpScreen.kt
+        │     Full-screen scrollable form with bidirectional Cost calculations.
+        ├── AddServiceScreen.kt
+        │     Form for date, odometer, dropdown service types, and notes.
+        ├── AddExpenseScreen.kt
+        │     Form for date, category dropdown selection, cost, and notes.
+        ├── AddTripScreen.kt
+        │     Form for start/end odometer, purpose, and live distance calculations.
+        └── UpdateOdometerScreen.kt
+              Clean date and odometer input updating vehicle baseline.
 
 ========================================================================
 3. CRITICAL ARCHITECTURAL RULES (must be respected in all future code)
@@ -243,11 +220,10 @@ RULE 2 — SHARED VEHICLE SELECTION VIA DATASTORE
   data query. Never store vehicleId in ViewModel local state alone.
 
 RULE 3 — CHRONOLOGICAL ODOMETER VALIDATION
-  ValidateOdometerUseCase must be called before any FuelLog insert.
-  It checks:
-    - closestLogBefore.odometer <= newOdometer  (or no prior log)
-    - closestLogAfter.odometer  >= newOdometer  (or no later log)
-  If either bound fails, surface an inline error. Do NOT silently save.
+  ValidateOdometerUseCase must be called before any Fuel, Service, Trip,
+  or Odometer log insert. It checks across all log tables for date-ordered
+  bounds to prevent timeline regression.
+  If bounds fail, surface an inline error. Do NOT silently save.
 
 RULE 4 — CANVAS CHART PERFORMANCE
   All coordinate math for the BezierChart (minX, maxX, minY, maxY,
@@ -275,58 +251,36 @@ RULE 7 — ANIMATED FAB EXPANSION
   not acceptable.
 
 RULE 8 — SINGLE IMMUTABLE UI STATE PER FORM
-  Every form screen (AddFillUp and any future Service/Expense/Trip
-  screens) must bind ALL field values inside ONE data class UiState
-  held by a single MutableStateFlow in the ViewModel. No individual
-  mutableStateOf() per field in the VM. This prevents stuttering and
-  ensures atomic state updates.
+  Every form screen (AddFillUp and all Phase 4 expansion screens) must
+  bind ALL field values inside ONE data class UiState held by a single
+  MutableStateFlow in the ViewModel. No individual mutableStateOf()
+  per field in the VM. This prevents stuttering and ensures atomic updates.
 
 ========================================================================
 4. IMPLEMENTATION PHASES & WHAT TO DO NEXT
 ========================================================================
 
-COMPLETED (as of initial build):
+COMPLETED (as of latest build):
   [x] Project scaffolding (android CLI, package com.auto.odo)
   [x] All 5 Room entities + DAOs with aggregate & bound queries
   [x] AppDatabase, AppModule (Hilt)
   [x] Repository interfaces + implementations
-  [x] UseCases: Metrics, RecentLogs, LogsFeed, OdometerValidation
-  [x] ViewModels: Dashboard, LogsFeed, AddFillUp
+  [x] UseCases: Metrics, RecentLogs, LogsFeed, OdometerValidation (cross-table)
+  [x] ViewModels split into individual single-responsibility files
   [x] OdoTheme (M3 Dark/Light, edge-to-edge colors)
-  [x] DashboardScreen: vehicle selector, metric cards, Bezier chart,
-      multi-FAB speed-dial, recent logs feed
+  [x] DashboardScreen: vehicle selector, metrics, Bezier chart, speed-dial FAB
   [x] LogsFeedScreen: filter chips, swipe-to-delete, empty states
-  [x] AddFillUpScreen: bidirectional calc engine, DatePickerDialog,
-      odometer safeguard, mock receipt, save flow
-  [x] MainActivity: NavHost, BottomNavigationBar, route graph
-  [x] UserSessionManager, UnitConverter, UiState core files
-
-PHASE 4 — UI EXPANSION (NEXT PRIORITY):
-  [ ] AddServiceScreen
-        Form: date, odometer, serviceType (dropdown: Oil Change /
-        Tyres / Battery / Brakes / Filters / Other), cost, notes.
-        Odometer validation via ValidateOdometerUseCase.
-        ViewModel: AddServiceViewModel with single UiState.
-  [ ] AddExpenseScreen
-        Form: date, category chip selector (Parking / Fine / Toll /
-        Insurance / Other), cost, notes.
-        ViewModel: AddExpenseViewModel with single UiState.
-  [ ] AddTripScreen
-        Form: date, startOdo, endOdo, purpose (Business/Personal),
-        notes. Distance auto-calculated and displayed live.
-        ViewModel: AddTripViewModel with single UiState.
-  [ ] UpdateOdometerScreen
-        Minimal form: just a date + new odo reading. Acts as a
-        standalone event log for odometer-only updates (no fuel).
+  [x] AddFillUpScreen: cost engine, date dialog, odo validation, receipt upload
+  [x] AddServiceScreen: log services (Oil Change, Brakes, filters, tyres, etc.)
+  [x] AddExpenseScreen: category drop-downs, total cost, and notes
+  [x] AddTripScreen: start/end odometer, purpose, and live distance calculations
+  [x] UpdateOdometerScreen: standalone odo baseline updates logged as services
+  [x] MainActivity: NavHost routing, bottom bar auto-visibility, Screen sealed class
 
 PHASE 5 — POLISH & HARDENING:
-  [ ] Replace plain .collectAsState() calls with
-      .collectAsStateWithLifecycle() across ALL screens.
-  [ ] Add BackHandler / PredictiveBackHandler to AddFillUpScreen,
-      AddServiceScreen, etc. to warn users about unsaved changes.
-  [ ] Wire AnimatedVisibility slideIn/slideOut to the FAB speed-dial
-      in DashboardScreen if not already fully animated.
-  [ ] Room Database Migrations: add MigrationStrategy for v1->v2+.
+  [ ] Add BackHandler / PredictiveBackHandler to all input form screens
+      to warn users about unsaved changes.
+  [ ] Room Database Migrations: add MigrationStrategy for future versions.
   [ ] Add WorkManager task for scheduled maintenance reminders
       (e.g., "oil change due in 500 km" background computation).
 
@@ -339,8 +293,7 @@ PHASE 6 — ADVANCED FEATURES:
       reading and fuel efficiency summary.
   [ ] Analytics deep-dive: Monthly/yearly cost breakdowns,
       per-category pie charts, cost-per-km trend lines.
-  [ ] CSV/PDF Export: Export logs per vehicle to share with
-      accountants (business trip mileage) or insurance.
+  [ ] CSV/PDF Export: Export logs per vehicle to share.
 
 PHASE 7 — TESTING:
   [ ] Local unit tests: UnitConverter, ValidateOdometerUseCase,
@@ -353,26 +306,14 @@ PHASE 7 — TESTING:
 5. KNOWN ISSUES / WATCH-OUTS FOR THE NEXT LLM
 ========================================================================
 
-- The stale test files (com.max.odo.*) have been deleted. Placeholder
-  tests exist at com.auto.odo.ExampleUnitTest and
-  com.auto.odo.ExampleInstrumentedTest.
-
 - The analytics (Phase 6) and settings screens are currently placeholder
   stubs in MainActivity's NavHost. They display informational text only.
 
-- The "Add Service", "Add Expense", "Add Trip", and "Update Odometer"
-  FAB items show a PlaceholderDialog. These need full screen
-  implementations in Phase 4.
-
-- ViewModels.kt contains all three ViewModels in a single file for
-  initial scaffold speed. Phase 4 should split these into individual
-  files per ViewModel for maintainability.
-
-- String formatting in ViewModels.kt uses a workaround
+- String formatting in ViewModels uses a workaround
   (String.format("%.2Fi").replace("i", "")) because of a Kotlin
   multiplatform String.format quirk. This should be replaced with
   "%.2f".format(value) or locale-aware NumberFormat in Phase 5.
 
 ========================================================================
-END OF ABOUT.TXT — PROJECT ODO v0.1 (Build: 2026-06-02)
+END OF ABOUT.TXT — PROJECT ODO v0.2 (Build: 2026-06-08)
 ========================================================================
