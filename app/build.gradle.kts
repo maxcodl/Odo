@@ -96,4 +96,7 @@ dependencies {
 
   // DataStore
   implementation(libs.datastore.preferences)
+
+  // DocumentFile (SAF) — for import/export folder access
+  implementation(libs.androidx.documentfile)
 }

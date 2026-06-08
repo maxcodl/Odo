@@ -44,12 +44,15 @@ class UpdateOdometerViewModel @Inject constructor(
                 if (vehicleId != null) {
                     val vehicle = vehicleRepo.getVehicleById(vehicleId)
                     val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                    val lastOdo = logs.lastOrNull()?.odometer ?: 0.0
+                    val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                    val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
+                        UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
                     _uiState.update {
                         it.copy(
                             selectedVehicle = vehicle,
-                            lastKnownOdometer = lastOdo,
-                            odometer = if (lastOdo > 0) lastOdo.toString() else ""
+                            lastKnownOdometer = lastOdoDisplay,
+                            odometer = if (lastOdoDisplay > 0)
+                                String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
                         )
                     }
                 }
@@ -69,18 +72,21 @@ class UpdateOdometerViewModel @Inject constructor(
 
     private fun validateOdometerChronologically() {
         val vehicle = _uiState.value.selectedVehicle ?: return
-        val odoVal = _uiState.value.odometer.replace(',', '.').toDoubleOrNull() ?: return
+        val odoDisplayVal = _uiState.value.odometer.replace(',', '.').toDoubleOrNull() ?: return
+        val odoKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoDisplayVal) else odoDisplayVal
         viewModelScope.launch {
-            val result = validateOdometer(vehicle.id, _uiState.value.date, odoVal)
+            val result = validateOdometer(vehicle.id, _uiState.value.date, odoKm)
             _uiState.update {
                 when (result) {
                     is OdoValidationResult.Valid -> it.copy(odometerError = null)
-                    is OdoValidationResult.InvalidBefore -> it.copy(
-                        odometerError = "Reading is lower than a previous log on this date (${result.limit} ${vehicle.distanceUnit})"
-                    )
-                    is OdoValidationResult.InvalidAfter -> it.copy(
-                        odometerError = "Reading is higher than a subsequent log on this date (${result.limit} ${vehicle.distanceUnit})"
-                    )
+                    is OdoValidationResult.InvalidBefore -> {
+                        val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(result.limit) else result.limit
+                        it.copy(odometerError = "Reading is lower than a previous log (%.1f ${vehicle.distanceUnit})".format(lim))
+                    }
+                    is OdoValidationResult.InvalidAfter -> {
+                        val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(result.limit) else result.limit
+                        it.copy(odometerError = "Reading is higher than a subsequent log (%.1f ${vehicle.distanceUnit})".format(lim))
+                    }
                 }
             }
         }
@@ -104,22 +110,27 @@ class UpdateOdometerViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
-            val validation = validateOdometer(vehicle.id, state.date, odoVal)
+            val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
+            val validation = validateOdometer(vehicle.id, state.date, standardOdo)
             if (validation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
                         odometerError = when (validation) {
-                            is OdoValidationResult.InvalidBefore -> "Must be >= previous odometer (${validation.limit})"
-                            is OdoValidationResult.InvalidAfter -> "Must be <= subsequent odometer (${validation.limit})"
+                            is OdoValidationResult.InvalidBefore -> {
+                                val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
+                                "Must be >= previous odometer (%.1f ${vehicle.distanceUnit})".format(lim)
+                            }
+                            is OdoValidationResult.InvalidAfter -> {
+                                val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
+                                "Must be <= subsequent odometer (%.1f ${vehicle.distanceUnit})".format(lim)
+                            }
                             else -> "Invalid odometer reading"
                         }
                     )
                 }
                 return@launch
             }
-
-            val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
 
             val entity = ServiceLogEntity(
                 vehicleId = vehicle.id,

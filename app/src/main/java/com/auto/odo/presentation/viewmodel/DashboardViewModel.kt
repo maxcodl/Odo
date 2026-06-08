@@ -68,9 +68,12 @@ class DashboardViewModel @Inject constructor(
                 combine(
                     getRollingMetrics(activeVehicle.id),
                     getRecentLogs(activeVehicle.id),
-                    flow { emit(calculateChartPoints(activeVehicle.id, activeVehicle.distanceUnit, activeVehicle.fuelUnit)) }
-                ) { metrics, logs, chart ->
-                    Triple(metrics, logs, chart)
+                    fuelRepo.getFuelLogsForVehicle(activeVehicle.id)
+                ) { metrics, logs, fuelLogs ->
+                    // Sort by odometer for chart calculation (getFuelLogsForVehicle returns by date desc)
+                    val sortedByOdo = fuelLogs.sortedBy { it.odometer }
+                    val chartPoints = buildChartPoints(sortedByOdo, activeVehicle.distanceUnit, activeVehicle.fuelUnit)
+                    Triple(metrics, logs, chartPoints)
                 }.collect { (metrics, logs, chart) ->
                     _uiState.update {
                         it.copy(
@@ -105,16 +108,17 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private suspend fun calculateChartPoints(vehicleId: Long, distUnit: String, volUnit: String): List<ChartPoint> {
-        val fuelLogs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+    private fun buildChartPoints(
+        fuelLogs: List<com.auto.odo.data.entity.FuelLogEntity>,
+        distUnit: String,
+        volUnit: String
+    ): List<ChartPoint> {
         if (fuelLogs.size < 2) return emptyList()
-
         val points = mutableListOf<ChartPoint>()
         for (i in 1 until fuelLogs.size) {
             val prev = fuelLogs[i - 1]
             val curr = fuelLogs[i]
             if (curr.isPartialTank) continue
-
             val distance = curr.odometer - prev.odometer
             if (distance > 0 && curr.quantity > 0) {
                 var efficiency = distance / curr.quantity

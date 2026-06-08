@@ -161,30 +161,8 @@ fun MainAppScreen() {
             }
 
             composable(Screen.Settings.route) {
-                // Settings Mock Screen
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(72.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Settings & Units", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        "Configure standard units, sync cloud databases, backup data and customize currency preferences.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                }
+                val settingsViewModel: SettingsViewModel = hiltViewModel()
+                SettingsScreen(viewModel = settingsViewModel)
             }
 
             composable(Screen.AddFillUp.route) {

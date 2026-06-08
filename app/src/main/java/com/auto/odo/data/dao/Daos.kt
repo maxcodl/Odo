@@ -85,10 +85,10 @@ interface ServiceLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<ServiceLogEntity>): List<Long>
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC, odometer DESC LIMIT 1")
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC LIMIT 1")
     suspend fun getClosestLogBefore(vehicleId: Long, date: Long): ServiceLogEntity?
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC, odometer ASC LIMIT 1")
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC LIMIT 1")
     suspend fun getClosestLogAfter(vehicleId: Long, date: Long): ServiceLogEntity?
 }
 
@@ -130,9 +130,9 @@ interface TripLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<TripLogEntity>): List<Long>
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC, endOdo DESC LIMIT 1")
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC LIMIT 1")
     suspend fun getClosestLogBefore(vehicleId: Long, date: Long): TripLogEntity?
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC, startOdo ASC LIMIT 1")
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC LIMIT 1")
     suspend fun getClosestLogAfter(vehicleId: Long, date: Long): TripLogEntity?
 }
