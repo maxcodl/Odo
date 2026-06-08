@@ -1,0 +1,44 @@
+package com.auto.odo.data
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import com.auto.odo.data.dao.*
+import com.auto.odo.data.entity.*
+
+@Database(
+    entities = [
+        VehicleEntity::class,
+        FuelLogEntity::class,
+        ServiceLogEntity::class,
+        ExpenseLogEntity::class,
+        TripLogEntity::class
+    ],
+    version = 1,
+    exportSchema = false
+)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun vehicleDao(): VehicleDao
+    abstract fun fuelLogDao(): FuelLogDao
+    abstract fun serviceLogDao(): ServiceLogDao
+    abstract fun expenseLogDao(): ExpenseLogDao
+    abstract fun tripLogDao(): TripLogDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "odo_database"
+                ).build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
