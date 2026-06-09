@@ -12,7 +12,7 @@ interface VehicleDao {
     @Query("SELECT * FROM vehicles WHERE id = :id LIMIT 1")
     suspend fun getVehicleById(id: Long): VehicleEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertVehicle(vehicle: VehicleEntity): Long
 
     @Update
@@ -24,7 +24,7 @@ interface VehicleDao {
     @Query("SELECT * FROM vehicles")
     suspend fun getAllVehiclesList(): List<VehicleEntity>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAll(vehicles: List<VehicleEntity>): List<Long>
 
     @Query("DELETE FROM vehicles")
@@ -54,12 +54,12 @@ interface FuelLogDao {
     @Delete
     suspend fun deleteFuelLog(log: FuelLogEntity)
 
-    // Odometer safeguards: Find closest readings before and after a specific date
-    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC, odometer DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): FuelLogEntity?
+    // Odometer safeguards: Find closest readings before and after a specific date and odometer
+    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
 
-    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC, odometer ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): FuelLogEntity?
+    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
 
     @Query("SELECT * FROM fuel_logs ORDER BY date ASC")
     suspend fun getAllFuelLogs(): List<FuelLogEntity>
@@ -88,11 +88,11 @@ interface ServiceLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<ServiceLogEntity>): List<Long>
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): ServiceLogEntity?
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): ServiceLogEntity?
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
 }
 
 @Dao
@@ -133,9 +133,9 @@ interface TripLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<TripLogEntity>): List<Long>
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date < :date ORDER BY date DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): TripLogEntity?
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND endOdo <= :odo)) ORDER BY date DESC, endOdo DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND date > :date ORDER BY date ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): TripLogEntity?
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND startOdo >= :odo)) ORDER BY date ASC, startOdo ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
 }

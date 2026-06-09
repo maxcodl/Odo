@@ -22,8 +22,8 @@ interface FuelLogRepository {
     fun getFillUpCountSince(vehicleId: Long, sinceDate: Long): Flow<Int>
     suspend fun insertFuelLog(log: FuelLogEntity): Long
     suspend fun deleteFuelLog(log: FuelLogEntity)
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): FuelLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): FuelLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
     suspend fun getAllFuelLogs(): List<FuelLogEntity>
     suspend fun insertAllFuelLogs(logs: List<FuelLogEntity>): List<Long>
 }
@@ -35,8 +35,8 @@ interface ServiceLogRepository {
     suspend fun deleteServiceLog(log: ServiceLogEntity)
     suspend fun getAllServiceLogs(): List<ServiceLogEntity>
     suspend fun insertAllServiceLogs(logs: List<ServiceLogEntity>): List<Long>
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): ServiceLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): ServiceLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
 }
 
 interface ExpenseLogRepository {
@@ -54,6 +54,6 @@ interface TripLogRepository {
     suspend fun deleteTripLog(log: TripLogEntity)
     suspend fun getAllTripLogs(): List<TripLogEntity>
     suspend fun insertAllTripLogs(logs: List<TripLogEntity>): List<Long>
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long): TripLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long): TripLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
 }

@@ -518,6 +518,8 @@ fun BezierChart(
     }
 }
 
+import com.auto.odo.core.UnitConverter
+
 @Composable
 fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateFormatter: SimpleDateFormat, costFormat: String) {
     Card(
@@ -541,7 +543,10 @@ fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateF
                 Text(text = dateFormatter.format(Date(log.date)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Column(horizontalAlignment = Alignment.End) {
-                if (log is LogItem.Fuel) Text(text = "${log.odometer.toInt()} $distanceUnit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                if (log is LogItem.Fuel) {
+                    val displayOdo = if (distanceUnit == "miles") UnitConverter.kmToMiles(log.odometer).toInt() else log.odometer.toInt()
+                    Text(text = "$displayOdo $distanceUnit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
                 if (log.totalCost > 0) Text(text = "$currency ${costFormat.format(log.totalCost)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }

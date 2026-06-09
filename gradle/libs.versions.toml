@@ -19,6 +19,7 @@ datastore = "1.1.1"
 ksp = "2.1.10-1.0.31"
 navigationCompose = "2.8.5"
 documentfile = "1.0.1"
+coil = "2.6.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
@@ -52,6 +53,7 @@ hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", ve
 datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }

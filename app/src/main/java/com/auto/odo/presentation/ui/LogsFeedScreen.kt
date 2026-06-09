@@ -49,9 +49,8 @@ fun LogsFeedScreen(
             actionLabel = "UNDO",
             duration = SnackbarDuration.Short  // ~4 s
         )
-        when (result) {
-            SnackbarResult.ActionPerformed -> viewModel.undoDelete()
-            SnackbarResult.Dismissed -> viewModel.commitPendingDelete()
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undoDelete()
         }
     }
 
@@ -125,6 +124,7 @@ fun LogsFeedScreen(
             } else {
                 val currency = uiState.selectedVehicle?.currency ?: "INR"
                 val distUnit = uiState.selectedVehicle?.distanceUnit ?: "km"
+                val fuelUnit = uiState.selectedVehicle?.fuelUnit ?: "Liters"
                 val pendingId = uiState.pendingDeleteLog?.id
                 val pendingType = uiState.pendingDeleteLog?.javaClass?.simpleName
 
@@ -152,7 +152,8 @@ fun LogsFeedScreen(
                                 LogItemCard(
                                     log = log,
                                     currency = currency,
-                                    distUnit = distUnit
+                                    distUnit = distUnit,
+                                    fuelUnit = fuelUnit
                                 )
                             }
                         }
@@ -210,10 +211,14 @@ fun <T> SwipeToDeleteContainer(
     )
 }
 
+import com.auto.odo.core.UnitConverter
+
 @Composable
-fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
+fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUnit: String = "Liters") {
     val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(log.date))
     val sym = currencySymbol(currency)
+    
+    val fuelLabel = if (fuelUnit == "Gallons") "gal" else "L"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -227,11 +232,17 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
             verticalAlignment = Alignment.CenterVertically
         ) {
             val (triple, subtitle) = when (log) {
-                is LogItem.Fuel -> Triple(
-                    Icons.Default.LocalGasStation,
-                    MaterialTheme.colorScheme.primary,
-                    "Fuel Fill-Up"
-                ) to "${String.format("%.2f", log.quantity)} L · ${sym}${String.format("%.2f", log.pricePerUnit)}/L"
+                is LogItem.Fuel -> {
+                    val displayQty = if (fuelUnit == "Gallons") UnitConverter.litersToGallons(log.quantity) else log.quantity
+                    // Price per unit needs to be adjusted. Cost = Qty * Price.
+                    // If we display in gallons, PricePerGal = Cost / displayQty.
+                    val displayPrice = if (displayQty > 0) log.totalCost / displayQty else 0.0
+                    Triple(
+                        Icons.Default.LocalGasStation,
+                        MaterialTheme.colorScheme.primary,
+                        "Fuel Fill-Up"
+                    ) to "${String.format(Locale.US, "%.2f", displayQty)} $fuelLabel · ${sym}${String.format(Locale.US, "%.2f", displayPrice)}/$fuelLabel"
+                }
 
                 is LogItem.Service -> Triple(
                     Icons.Default.Build,
@@ -245,11 +256,15 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
                     "Expense: ${log.category}"
                 ) to (log.notes ?: "Category expense")
 
-                is LogItem.Trip -> Triple(
-                    Icons.Default.DirectionsCar,
-                    MaterialTheme.colorScheme.primary,
-                    "Trip (${log.purpose})"
-                ) to "Distance: ${String.format("%.1f", log.endOdo - log.startOdo)} $distUnit"
+                is LogItem.Trip -> {
+                    val rawDistance = log.endOdo - log.startOdo
+                    val displayDistance = if (distUnit == "miles") UnitConverter.kmToMiles(rawDistance) else rawDistance
+                    Triple(
+                        Icons.Default.DirectionsCar,
+                        MaterialTheme.colorScheme.primary,
+                        "Trip (${log.purpose})"
+                    ) to "Distance: ${String.format(Locale.US, "%.1f", displayDistance)} $distUnit"
+                }
             }
             val (icon, tint, title) = triple
 
@@ -274,8 +289,9 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
 
             Column(horizontalAlignment = Alignment.End) {
                 if (log is LogItem.Fuel) {
+                    val displayOdo = if (distUnit == "miles") UnitConverter.kmToMiles(log.odometer).toInt() else log.odometer.toInt()
                     Text(
-                        text = "Odo: ${log.odometer.toInt()} $distUnit",
+                        text = "Odo: $displayOdo $distUnit",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -284,7 +300,7 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km") {
                 }
                 if (log.totalCost > 0) {
                     Text(
-                        text = "$sym ${String.format("%.2f", log.totalCost)}",
+                        text = "$sym ${String.format(Locale.US, "%.2f", log.totalCost)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary

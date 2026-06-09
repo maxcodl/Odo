@@ -3,7 +3,9 @@ package com.auto.odo.domain.usecase
 import com.auto.odo.core.UnitConverter
 import com.auto.odo.data.entity.*
 import com.auto.odo.domain.repository.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 // 1. Unified Log model for the feeds
@@ -92,7 +94,7 @@ class GetRolling30DayMetricsUseCase @Inject constructor(
                 averageEfficiency = avgEff,
                 fillUpCountLast30Days = count
             )
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     private fun calculateAverageEfficiency(logs: List<FuelLogEntity>, distUnit: String, volUnit: String): Double {
@@ -148,7 +150,7 @@ class GetRecentLogsUseCase @Inject constructor(
         return combine(fuelFlow, serviceFlow, expenseFlow, tripFlow) { f, s, e, t ->
             val allLogs = f + s + e + t
             allLogs.sortedByDescending { it.date }.take(limit)
-        }
+        }.flowOn(Dispatchers.Default)
     }
 }
 
@@ -174,7 +176,7 @@ class GetLogsFeedUseCase @Inject constructor(
                 else -> f + s + e + t
             }
             unfiltered.sortedByDescending { it.date }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 }
 
@@ -191,18 +193,18 @@ class ValidateOdometerUseCase @Inject constructor(
     private val tripRepo: TripLogRepository
 ) {
     suspend operator fun invoke(vehicleId: Long, date: Long, odometer: Double): OdoValidationResult {
-        val fuelBefore = fuelRepo.getClosestLogBefore(vehicleId, date)?.odometer ?: 0.0
-        val serviceBefore = serviceRepo.getClosestLogBefore(vehicleId, date)?.odometer ?: 0.0
-        val tripBefore = tripRepo.getClosestLogBefore(vehicleId, date)?.endOdo ?: 0.0
+        val fuelBefore = fuelRepo.getClosestLogBefore(vehicleId, date, odometer)?.odometer ?: 0.0
+        val serviceBefore = serviceRepo.getClosestLogBefore(vehicleId, date, odometer)?.odometer ?: 0.0
+        val tripBefore = tripRepo.getClosestLogBefore(vehicleId, date, odometer)?.endOdo ?: 0.0
 
         val maxBefore = maxOf(fuelBefore, serviceBefore, tripBefore)
         if (maxBefore > 0.0 && odometer < maxBefore) {
             return OdoValidationResult.InvalidBefore(maxBefore)
         }
 
-        val fuelAfter = fuelRepo.getClosestLogAfter(vehicleId, date)?.odometer
-        val serviceAfter = serviceRepo.getClosestLogAfter(vehicleId, date)?.odometer
-        val tripAfter = tripRepo.getClosestLogAfter(vehicleId, date)?.startOdo
+        val fuelAfter = fuelRepo.getClosestLogAfter(vehicleId, date, odometer)?.odometer
+        val serviceAfter = serviceRepo.getClosestLogAfter(vehicleId, date, odometer)?.odometer
+        val tripAfter = tripRepo.getClosestLogAfter(vehicleId, date, odometer)?.startOdo
 
         val limitsAfter = listOfNotNull(fuelAfter, serviceAfter, tripAfter)
         if (limitsAfter.isNotEmpty()) {

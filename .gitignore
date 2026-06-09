@@ -20,3 +20,12 @@ Services.csv
 /AutoBahn/.kotlin
 *.logs
 .kotlin/
+USER.md
+SOUL.md
+AGENTS.md
+.gitignore
+IDENTITY.md
+.gitignore
+HEARTBEAT.md
+TOOLS.md
+.openclaw/workspace-state.json

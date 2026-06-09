@@ -104,18 +104,6 @@ class LogsFeedViewModel @Inject constructor(
         _uiState.update { it.copy(pendingDeleteLog = null) }
     }
 
-    /**
-     * Snackbar was dismissed without Undo — commit the delete immediately
-     * (the countdown is still running but we don't want to wait for it).
-     */
-    fun commitPendingDelete() {
-        undoJob?.cancel()
-        undoJob = null
-        val log = _uiState.value.pendingDeleteLog ?: return
-        _uiState.update { it.copy(pendingDeleteLog = null) }
-        viewModelScope.launch { commitDelete(log) }
-    }
-
     // ── Internal ─────────────────────────────────────────────────────────────
 
     private suspend fun commitDelete(log: LogItem) {

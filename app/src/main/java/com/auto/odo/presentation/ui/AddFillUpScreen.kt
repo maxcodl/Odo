@@ -1,5 +1,8 @@
 package com.auto.odo.presentation.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -201,6 +206,13 @@ fun AddFillUpScreen(
 
             // 8. Mock Receipt Capture
             Text("Receipt Attachment", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            
+            val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+                if (uri != null) {
+                    viewModel.onReceiptAttached(uri.toString())
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -209,21 +221,17 @@ fun AddFillUpScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
                     .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .clickable {
-                        // Simulate capturing/attaching a mock receipt
-                        viewModel.onReceiptAttached("mock_receipt_image.jpg")
+                        launcher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                     },
                 contentAlignment = Alignment.Center
             ) {
                 if (uiState.receiptPath != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("receipt_attached.jpg", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text("Tap to change", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    AsyncImage(
+                        model = uiState.receiptPath,
+                        contentDescription = "Receipt receipt",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -231,7 +239,7 @@ fun AddFillUpScreen(
                     ) {
                         Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Tap to simulate receipt upload", style = MaterialTheme.typography.bodyMedium)
+                        Text("Tap to pick a receipt image", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }

@@ -48,12 +48,13 @@ class AddTripViewModel @Inject constructor(
                 if (vehicleId != null) {
                     val vehicle = vehicleRepo.getVehicleById(vehicleId)
                     val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                    val lastOdo = logs.lastOrNull()?.odometer ?: 0.0
+                    val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                    val displayLastOdo = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
                     _uiState.update {
                         it.copy(
                             selectedVehicle = vehicle,
-                            lastKnownOdometer = lastOdo,
-                            startOdo = if (lastOdo > 0) lastOdo.toString() else ""
+                            lastKnownOdometer = displayLastOdo,
+                            startOdo = if (displayLastOdo > 0) String.format(java.util.Locale.US, "%.1f", displayLastOdo) else ""
                         )
                     }
                 }
@@ -104,23 +105,30 @@ class AddTripViewModel @Inject constructor(
 
     private fun validateOdometers() {
         val vehicle = _uiState.value.selectedVehicle ?: return
-        val startVal = _uiState.value.startOdo.replace(',', '.').toDoubleOrNull()
-        val endVal = _uiState.value.endOdo.replace(',', '.').toDoubleOrNull()
+        val startValRaw = _uiState.value.startOdo.replace(',', '.').toDoubleOrNull()
+        val endValRaw = _uiState.value.endOdo.replace(',', '.').toDoubleOrNull()
 
-        if (startVal != null && endVal != null && endVal < startVal) {
+        if (startValRaw != null && endValRaw != null && endValRaw < startValRaw) {
             _uiState.update { it.copy(odoError = "End Odometer cannot be less than Start Odometer") }
             return
         }
 
         viewModelScope.launch {
-            if (startVal != null) {
-                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startVal)
+            if (startValRaw != null) {
+                val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startValRaw) else startValRaw
+                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startValKm)
                 if (startValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
                         it.copy(
                             odoError = when (startValidation) {
-                                is OdoValidationResult.InvalidBefore -> "Start odometer is lower than previous log (${startValidation.limit} ${vehicle.distanceUnit})"
-                                is OdoValidationResult.InvalidAfter -> "Start odometer is higher than subsequent log (${startValidation.limit} ${vehicle.distanceUnit})"
+                                is OdoValidationResult.InvalidBefore -> {
+                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(startValidation.limit) else startValidation.limit
+                                    "Start odometer is lower than previous log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
+                                }
+                                is OdoValidationResult.InvalidAfter -> {
+                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(startValidation.limit) else startValidation.limit
+                                    "Start odometer is higher than subsequent log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
+                                }
                                 else -> "Invalid start odometer"
                             }
                         )
@@ -129,14 +137,21 @@ class AddTripViewModel @Inject constructor(
                 }
             }
 
-            if (endVal != null) {
-                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endVal)
+            if (endValRaw != null) {
+                val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endValRaw) else endValRaw
+                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endValKm)
                 if (endValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
                         it.copy(
                             odoError = when (endValidation) {
-                                is OdoValidationResult.InvalidBefore -> "End odometer is lower than previous log (${endValidation.limit} ${vehicle.distanceUnit})"
-                                is OdoValidationResult.InvalidAfter -> "End odometer is higher than subsequent log (${endValidation.limit} ${vehicle.distanceUnit})"
+                                is OdoValidationResult.InvalidBefore -> {
+                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(endValidation.limit) else endValidation.limit
+                                    "End odometer is lower than previous log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
+                                }
+                                is OdoValidationResult.InvalidAfter -> {
+                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(endValidation.limit) else endValidation.limit
+                                    "End odometer is higher than subsequent log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
+                                }
                                 else -> "Invalid end odometer"
                             }
                         )
@@ -150,24 +165,27 @@ class AddTripViewModel @Inject constructor(
     fun saveTrip() {
         val state = _uiState.value
         val vehicle = state.selectedVehicle ?: return
-        val startVal = state.startOdo.replace(',', '.').toDoubleOrNull()
-        val endVal = state.endOdo.replace(',', '.').toDoubleOrNull()
+        val startValRaw = state.startOdo.replace(',', '.').toDoubleOrNull()
+        val endValRaw = state.endOdo.replace(',', '.').toDoubleOrNull()
 
-        if (startVal == null || endVal == null) {
+        if (startValRaw == null || endValRaw == null) {
             _uiState.update { it.copy(odoError = "Please fill in all mandatory fields correctly") }
             return
         }
 
-        if (startVal < 0 || endVal < startVal) {
+        if (startValRaw < 0 || endValRaw < startValRaw) {
             _uiState.update { it.copy(odoError = "Start Odometer must be non-negative, End Odometer must be >= Start Odometer") }
             return
         }
+
+        val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startValRaw) else startValRaw
+        val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endValRaw) else endValRaw
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
             // Validate start
-            val startValidation = validateOdometer(vehicle.id, state.date, startVal)
+            val startValidation = validateOdometer(vehicle.id, state.date, startValKm)
             if (startValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
@@ -179,7 +197,7 @@ class AddTripViewModel @Inject constructor(
             }
 
             // Validate end
-            val endValidation = validateOdometer(vehicle.id, state.date, endVal)
+            val endValidation = validateOdometer(vehicle.id, state.date, endValKm)
             if (endValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
@@ -190,14 +208,11 @@ class AddTripViewModel @Inject constructor(
                 return@launch
             }
 
-            val standardStart = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startVal) else startVal
-            val standardEnd = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endVal) else endVal
-
             val entity = TripLogEntity(
                 vehicleId = vehicle.id,
                 date = state.date,
-                startOdo = standardStart,
-                endOdo = standardEnd,
+                startOdo = startValKm,
+                endOdo = endValKm,
                 purpose = state.purpose,
                 notes = state.notes.ifBlank { null }
             )

@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import androidx.room.withTransaction
 import com.auto.odo.core.CsvManager
+import com.auto.odo.data.AppDatabase
 import com.auto.odo.domain.repository.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -57,8 +59,10 @@ sealed class ImportExportResult<T> {
  *  4. Parse & insert Trip_Log.csv
  *  5. Services.csv is skipped (template config only, not actual records)
  */
+
 class ImportDataUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val appDatabase: AppDatabase,
     private val vehicleRepo: VehicleRepository,
     private val fuelLogRepo: FuelLogRepository,
     private val serviceLogRepo: ServiceLogRepository,
@@ -71,10 +75,7 @@ class ImportDataUseCase @Inject constructor(
                 val folder = DocumentFile.fromTreeUri(context, folderUri)
                     ?: return@withContext ImportExportResult.Error("Cannot access selected folder.")
 
-                // ── 1. Wipe existing data (FK cascade handles children) ──────────
-                vehicleRepo.deleteAllVehicles()
-
-                // ── 2. Parse Vehicles.csv ─────────────────────────────────────────
+                // ── 1. Parse Vehicles.csv ─────────────────────────────────────────
                 val vehiclesFile = folder.findFile("Vehicles.csv")
                     ?: return@withContext ImportExportResult.Error("Vehicles.csv not found in selected folder.")
 
@@ -87,79 +88,82 @@ class ImportDataUseCase @Inject constructor(
                     return@withContext ImportExportResult.Error("Vehicles.csv contains no vehicles.")
                 }
 
-                // Insert vehicles and build name→id map
-                // We need the new auto-generated IDs, so insert one-by-one and track
-                val vehicleNameToId = mutableMapOf<String, Long>()
-                vehicleEntities.forEach { v ->
-                    val newId = vehicleRepo.insertVehicle(v)
-                    vehicleNameToId[v.name.trim()] = newId
-                }
-
-                // ── 3. Parse Fuel_Log.csv ─────────────────────────────────────────
-                var fuelCount = 0
-                var serviceCount = 0
-                var expenseCount = 0
-
+                // ── 2. Parse Fuel_Log.csv ─────────────────────────────────────────
                 val fuelLogFile = folder.findFile("Fuel_Log.csv")
-                if (fuelLogFile != null) {
-                    val result = context.contentResolver
-                        .openInputStream(fuelLogFile.uri)
-                        ?.use { stream ->
-                            CsvManager.parseFuelLogCsv(
-                                BufferedReader(InputStreamReader(stream)),
-                                vehicleNameToId
-                            )
-                        }
-                    if (result != null) {
-                        if (result.fuelLogs.isNotEmpty()) {
-                            fuelLogRepo.insertAllFuelLogs(result.fuelLogs)
-                            fuelCount = result.fuelLogs.size
-                        }
-                        if (result.serviceLogs.isNotEmpty()) {
-                            serviceLogRepo.insertAllServiceLogs(result.serviceLogs)
-                            serviceCount = result.serviceLogs.size
-                        }
-                        if (result.expenseLogs.isNotEmpty()) {
-                            expenseLogRepo.insertAllExpenseLogs(result.expenseLogs)
-                            expenseCount = result.expenseLogs.size
+                var fuelLogResult: CsvManager.CombinedLogsResult? = null
+                
+                // We will defer actual relationship mapping until inside the transaction
+                // since CsvManager needs vehicleNameToId. But we can parse first and then update IDs, or just do everything in transaction.
+                // Doing it all in transaction is safe if the transaction is fast.
+                
+                var summary: ImportSummary? = null
+                
+                appDatabase.withTransaction {
+                    // Wipe existing data (FK cascade handles children)
+                    vehicleRepo.deleteAllVehicles()
+                    
+                    val vehicleNameToId = mutableMapOf<String, Long>()
+                    vehicleEntities.forEach { v ->
+                        val newId = vehicleRepo.insertVehicle(v)
+                        vehicleNameToId[v.name.trim()] = newId
+                    }
+
+                    var fuelCount = 0
+                    var serviceCount = 0
+                    var expenseCount = 0
+
+                    if (fuelLogFile != null) {
+                        val result = context.contentResolver
+                            .openInputStream(fuelLogFile.uri)
+                            ?.use { stream ->
+                                CsvManager.parseFuelLogCsv(
+                                    BufferedReader(InputStreamReader(stream)),
+                                    vehicleNameToId
+                                )
+                            }
+                        if (result != null) {
+                            if (result.fuelLogs.isNotEmpty()) {
+                                fuelLogRepo.insertAllFuelLogs(result.fuelLogs)
+                                fuelCount = result.fuelLogs.size
+                            }
+                            if (result.serviceLogs.isNotEmpty()) {
+                                serviceLogRepo.insertAllServiceLogs(result.serviceLogs)
+                                serviceCount = result.serviceLogs.size
+                            }
+                            if (result.expenseLogs.isNotEmpty()) {
+                                expenseLogRepo.insertAllExpenseLogs(result.expenseLogs)
+                                expenseCount = result.expenseLogs.size
+                            }
                         }
                     }
-                } else {
-                    Log.w(TAG, "Fuel_Log.csv not found — skipping.")
-                }
 
-                // ── 4. Parse Trip_Log.csv ─────────────────────────────────────────
-                var tripCount = 0
-                val tripLogFile = folder.findFile("Trip_Log.csv")
-                if (tripLogFile != null) {
-                    val trips = context.contentResolver
-                        .openInputStream(tripLogFile.uri)
-                        ?.use { stream ->
-                            CsvManager.parseTripLogCsv(
-                                BufferedReader(InputStreamReader(stream)),
-                                vehicleNameToId
-                            )
+                    var tripCount = 0
+                    val tripLogFile = folder.findFile("Trip_Log.csv")
+                    if (tripLogFile != null) {
+                        val trips = context.contentResolver
+                            .openInputStream(tripLogFile.uri)
+                            ?.use { stream ->
+                                CsvManager.parseTripLogCsv(
+                                    BufferedReader(InputStreamReader(stream)),
+                                    vehicleNameToId
+                                )
+                            }
+                        if (!trips.isNullOrEmpty()) {
+                            tripLogRepo.insertAllTripLogs(trips)
+                            tripCount = trips.size
                         }
-                    if (!trips.isNullOrEmpty()) {
-                        tripLogRepo.insertAllTripLogs(trips)
-                        tripCount = trips.size
                     }
-                } else {
-                    Log.w(TAG, "Trip_Log.csv not found — skipping.")
-                }
 
-                // Services.csv is intentionally skipped — it contains template definitions,
-                // not actual log records. Real service/expense records live in Fuel_Log.csv.
-
-                ImportExportResult.Success(
-                    ImportSummary(
+                    summary = ImportSummary(
                         vehicleCount = vehicleEntities.size,
                         fuelCount = fuelCount,
                         serviceCount = serviceCount,
                         expenseCount = expenseCount,
                         tripCount = tripCount
                     )
-                )
+                }
+
+                ImportExportResult.Success(summary!!)
             } catch (e: Exception) {
                 Log.e(TAG, "Import failed", e)
                 ImportExportResult.Error("Import failed: ${e.localizedMessage}")
