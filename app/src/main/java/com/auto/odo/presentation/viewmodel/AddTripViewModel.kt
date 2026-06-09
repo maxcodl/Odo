@@ -14,7 +14,6 @@ import com.auto.odo.domain.usecase.ValidateOdometerUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.util.Locale
 import javax.inject.Inject
 
 data class AddTripUiState(
@@ -57,7 +56,7 @@ class AddTripViewModel @Inject constructor(
                             selectedVehicle = vehicle,
                             lastKnownOdometer = lastOdoDisplay,
                             startOdo = if (lastOdoDisplay > 0)
-                                String.format(Locale.US, "%.1f", lastOdoDisplay) else ""
+                                String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
                         )
                     }
                 }
@@ -77,7 +76,7 @@ class AddTripViewModel @Inject constructor(
             val diff = if (endVal > startVal) (endVal - startVal) else 0.0
             state.copy(
                 startOdo = odo,
-                distanceDisplay = String.format(Locale.US, "%.1f", diff),
+                distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
                 odoError = null
             )
         }
@@ -91,7 +90,7 @@ class AddTripViewModel @Inject constructor(
             val diff = if (endVal > startVal) (endVal - startVal) else 0.0
             state.copy(
                 endOdo = odo,
-                distanceDisplay = String.format(Locale.US, "%.1f", diff),
+                distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
                 odoError = null
             )
         }
@@ -154,17 +153,17 @@ class AddTripViewModel @Inject constructor(
     ): String = when (validation) {
         is OdoValidationResult.InvalidBefore ->
             String.format(
-                Locale.US,
+                java.util.Locale.US,
                 "$label odometer is lower than previous log (%.1f ${vehicle.distanceUnit})",
                 fromStoredDistance(validation.limit, vehicle)
             )
         is OdoValidationResult.InvalidAfter ->
             String.format(
-                Locale.US,
+                java.util.Locale.US,
                 "$label odometer is higher than subsequent log (%.1f ${vehicle.distanceUnit})",
                 fromStoredDistance(validation.limit, vehicle)
             )
-        else -> "Invalid ${label.lowercase(Locale.US)} odometer"
+        else -> "Invalid ${label.lowercase()} odometer"
     }
 
     fun saveTrip() {
