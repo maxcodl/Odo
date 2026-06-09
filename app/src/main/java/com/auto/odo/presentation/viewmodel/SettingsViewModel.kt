@@ -3,6 +3,7 @@ package com.auto.odo.presentation.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.auto.odo.core.NavBarStyle
 import com.auto.odo.core.UserSessionManager
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.repository.VehicleRepository
@@ -44,6 +45,7 @@ data class SettingsUiState(
     // Vehicle list
     val vehicles: List<VehicleEntity> = emptyList(),
     val currentVehicleId: Long? = null,
+    val activeVehicle: VehicleEntity? = null,  // convenience — vehicles.first { id == currentVehicleId }
 
     // Add-vehicle sheet
     val showAddVehicleSheet: Boolean = false,
@@ -57,6 +59,11 @@ data class SettingsUiState(
     // Edit currency picker
     val vehiclePendingCurrencyEdit: VehicleEntity? = null,
     val editCurrencySelected: String = "INR",
+
+    // UI Preferences
+    val navBarStyle: NavBarStyle = NavBarStyle.SOLID,
+    val fullScreenStatusBar: Boolean = false,
+    val autoHideTitleBar: Boolean = true,
 
     // Delete confirmation
     val vehiclePendingDelete: VehicleEntity? = null,
@@ -92,14 +99,53 @@ class SettingsViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             vehicleRepo.getAllVehicles().collect { vehicles ->
-                _uiState.update { it.copy(vehicles = vehicles) }
+                _uiState.update { s ->
+                    s.copy(
+                        vehicles = vehicles,
+                        activeVehicle = vehicles.firstOrNull { it.id == s.currentVehicleId }
+                    )
+                }
             }
         }
         viewModelScope.launch {
             sessionManager.currentVehicleId.collect { id ->
-                _uiState.update { it.copy(currentVehicleId = id) }
+                _uiState.update { s ->
+                    s.copy(
+                        currentVehicleId = id,
+                        activeVehicle = s.vehicles.firstOrNull { it.id == id }
+                    )
+                }
             }
         }
+        viewModelScope.launch {
+            sessionManager.navBarStyle.collect { style ->
+                _uiState.update { it.copy(navBarStyle = style) }
+            }
+        }
+        viewModelScope.launch {
+            sessionManager.fullScreenStatusBar.collect { enabled ->
+                _uiState.update { it.copy(fullScreenStatusBar = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            sessionManager.autoHideTitleBar.collect { enabled ->
+                _uiState.update { it.copy(autoHideTitleBar = enabled) }
+            }
+        }
+    }
+
+    // ── UI Preferences ──────────────────────────────────────────────────────
+
+    fun setNavBarStyle(style: NavBarStyle) {
+        viewModelScope.launch { sessionManager.setNavBarStyle(style) }
+    }
+
+    fun setFullScreenStatusBar(enabled: Boolean) {
+        viewModelScope.launch { sessionManager.setFullScreenStatusBar(enabled) }
+    }
+
+    fun setAutoHideTitleBar(enabled: Boolean) {
+        viewModelScope.launch { sessionManager.setAutoHideTitleBar(enabled) }
     }
 
     // ── Add vehicle ──────────────────────────────────────────────────────────
@@ -185,7 +231,9 @@ class SettingsViewModel @Inject constructor(
         val newCurrency = _uiState.value.editCurrencySelected
         _uiState.update { it.copy(vehiclePendingCurrencyEdit = null) }
         viewModelScope.launch {
-            vehicleRepo.insertVehicle(vehicle.copy(currency = newCurrency))
+            // Use UPDATE (not insertVehicle/INSERT OR REPLACE) to avoid
+            // the SQLite REPLACE-then-CASCADE-DELETE bug that wipes all child logs.
+            vehicleRepo.updateVehicle(vehicle.copy(currency = newCurrency))
             _uiState.update {
                 it.copy(successMessage = "${vehicle.name} currency updated to $newCurrency")
             }

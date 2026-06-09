@@ -545,4 +545,31 @@ object CsvManager {
             }
         }
     }
+
+    fun writeAboutFormat(writer: BufferedWriter) {
+        writer.write("Odo CSV Backup Format Information")
+        writer.newLine()
+        writer.write("=================================")
+        writer.newLine()
+        writer.newLine()
+        writer.write("This folder contains a backup of your Odo data in CSV format.")
+        writer.newLine()
+        writer.newLine()
+        writer.write("FILES:")
+        writer.newLine()
+        writer.write("- Vehicles.csv: Contains vehicle definitions (Name, Type, etc.)")
+        writer.newLine()
+        writer.write("- Fuel_Log.csv: Contains all fuel fill-ups, service records, and expenses.")
+        writer.newLine()
+        writer.write("- Services.csv: Contains service and expense category templates.")
+        writer.newLine()
+        writer.write("- Trip_Log.csv: Contains all trip records.")
+        writer.newLine()
+        writer.newLine()
+        writer.write("IMPORTING:")
+        writer.newLine()
+        writer.write("To restore this data, select this folder in the App Settings > Import Data.")
+        writer.newLine()
+        writer.write("WARNING: Importing will permanently replace all current data in the app.")
+    }
 }

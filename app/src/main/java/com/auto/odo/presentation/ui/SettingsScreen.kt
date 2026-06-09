@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.core.NavBarStyle
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
 import com.auto.odo.presentation.viewmodel.SettingsViewModel
@@ -36,7 +37,10 @@ import com.auto.odo.presentation.viewmodel.currencySymbol
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    fullScreenStatusBar: Boolean = false
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -96,7 +100,16 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -104,9 +117,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
-            SettingsHeader()
-
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // ── Vehicles ──────────────────────────────────────────────────────
             SectionLabel("Vehicles")
@@ -116,8 +127,25 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 currentVehicleId = uiState.currentVehicleId,
                 onSelect = { viewModel.selectVehicle(it.id) },
                 onDelete = { viewModel.requestDeleteVehicle(it) },
-                onEditCurrency = { viewModel.openCurrencyEdit(it) },
                 onAdd = { viewModel.openAddVehicleSheet() }
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── Preferences ──────────────────────────────────────────────────
+            SectionLabel("Preferences")
+
+            PreferencesSection(
+                activeVehicle = uiState.activeVehicle,
+                navBarStyle = uiState.navBarStyle,
+                fullScreenStatusBar = uiState.fullScreenStatusBar,
+                autoHideTitleBar = uiState.autoHideTitleBar,
+                onChangeCurrency = {
+                    uiState.activeVehicle?.let { viewModel.openCurrencyEdit(it) }
+                },
+                onNavBarStyleChange = { viewModel.setNavBarStyle(it) },
+                onFullScreenStatusBarChange = { viewModel.setFullScreenStatusBar(it) },
+                onAutoHideTitleBarChange = { viewModel.setAutoHideTitleBar(it) }
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -151,19 +179,22 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            SectionLabel("About CSV Format")
-            CsvInfoCard()
-
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(110.dp)) // Padding for floating nav bar
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Vehicles Section
-// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+    )
+}
 
 @Composable
 private fun VehiclesSection(
@@ -171,7 +202,6 @@ private fun VehiclesSection(
     currentVehicleId: Long?,
     onSelect: (VehicleEntity) -> Unit,
     onDelete: (VehicleEntity) -> Unit,
-    onEditCurrency: (VehicleEntity) -> Unit,
     onAdd: () -> Unit
 ) {
     Card(
@@ -211,7 +241,6 @@ private fun VehiclesSection(
                         vehicle = vehicle,
                         isActive = vehicle.id == currentVehicleId,
                         onSelect = { onSelect(vehicle) },
-                        onEditCurrency = { onEditCurrency(vehicle) },
                         onDelete = { onDelete(vehicle) }
                     )
                     if (index < vehicles.lastIndex) {
@@ -268,7 +297,6 @@ private fun VehicleRow(
     vehicle: VehicleEntity,
     isActive: Boolean,
     onSelect: () -> Unit,
-    onEditCurrency: () -> Unit,
     onDelete: () -> Unit
 ) {
     Row(
@@ -278,7 +306,6 @@ private fun VehicleRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Vehicle type icon
         val vehicleIcon = if (vehicle.type == "Bike") Icons.Default.TwoWheeler else Icons.Default.DirectionsCar
         Box(
             modifier = Modifier
@@ -334,17 +361,6 @@ private fun VehicleRow(
             )
         }
 
-        // Edit currency
-        IconButton(onClick = onEditCurrency) {
-            Icon(
-                imageVector = Icons.Default.CurrencyExchange,
-                contentDescription = "Change currency for ${vehicle.name}",
-                tint = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        // Delete
         IconButton(onClick = onDelete) {
             Icon(
                 imageVector = Icons.Default.DeleteOutline,
@@ -356,9 +372,256 @@ private fun VehicleRow(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Add Vehicle Bottom Sheet
-// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun PreferencesSection(
+    activeVehicle: VehicleEntity?,
+    navBarStyle: NavBarStyle,
+    fullScreenStatusBar: Boolean,
+    autoHideTitleBar: Boolean,
+    onChangeCurrency: () -> Unit,
+    onNavBarStyleChange: (NavBarStyle) -> Unit,
+    onFullScreenStatusBarChange: (Boolean) -> Unit,
+    onAutoHideTitleBarChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column {
+            // Currency
+            PreferenceRow(
+                icon = Icons.Default.CurrencyExchange,
+                iconColor = MaterialTheme.colorScheme.secondary,
+                title = "Currency",
+                subtitle = activeVehicle?.let { "${currencySymbol(it.currency)} ${it.currency}" } ?: "Not selected",
+                onClick = onChangeCurrency
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
+            // Nav Bar Style
+            var showNavBarStyleMenu by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                PreferenceRow(
+                    icon = Icons.Default.TableChart,
+                    iconColor = MaterialTheme.colorScheme.primary,
+                    title = "Navigation Bar Style",
+                    subtitle = navBarStyle.name.lowercase().replaceFirstChar { it.uppercase() },
+                    onClick = { showNavBarStyleMenu = true }
+                )
+
+                DropdownMenu(
+                    expanded = showNavBarStyleMenu,
+                    onDismissRequest = { showNavBarStyleMenu = false }
+                ) {
+                    NavBarStyle.values().forEach { style ->
+                        DropdownMenuItem(
+                            text = { Text(style.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            onClick = {
+                                onNavBarStyleChange(style)
+                                showNavBarStyleMenu = false
+                            },
+                            trailingIcon = if (style == navBarStyle) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
+            // Full Screen Status Bar
+            PreferenceSwitchRow(
+                icon = Icons.Default.Fullscreen,
+                iconColor = MaterialTheme.colorScheme.tertiary,
+                title = "Immersive Status Bar",
+                subtitle = "Hide status bar for a cleaner look",
+                checked = fullScreenStatusBar,
+                onCheckedChange = onFullScreenStatusBarChange
+            )
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
+            // Auto Hide Title Bar
+            PreferenceSwitchRow(
+                icon = Icons.Default.UnfoldLess,
+                iconColor = MaterialTheme.colorScheme.primary,
+                title = "Smart Title Bar",
+                subtitle = "Hide title bar while scrolling",
+                checked = autoHideTitleBar,
+                onCheckedChange = onAutoHideTitleBarChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreferenceRow(
+    icon: ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(iconColor.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+    }
+}
+
+@Composable
+private fun PreferenceSwitchRow(
+    icon: ImageVector,
+    iconColor: Color,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(iconColor.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(20.dp))
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            thumbContent = if (checked) { { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(12.dp)) } } else null
+        )
+    }
+}
+
+@Composable
+private fun DataActionCard(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    isLoading: Boolean,
+    accentColor: Color,
+    onActionClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(iconTint.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = androidx.compose.ui.unit.TextUnit(18f, androidx.compose.ui.unit.TextUnitType.Sp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(
+                onClick = onActionClick,
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(20.dp),
+        icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Replace All Data?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                "This will permanently delete all current vehicles, fuel logs, service records, expenses and trips — then replace them with data from the selected CSV files.\n\nThis action cannot be undone.",
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = RoundedCornerShape(10.dp)) {
+                Text("Yes, Replace")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
+        }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -526,10 +789,6 @@ private fun SheetOptionRow(
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Edit Currency Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun EditCurrencyDialog(
     vehicleName: String,
@@ -631,10 +890,6 @@ private fun currencyFullName(code: String): String = when (code) {
     else -> code
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Delete Confirmation Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
 @Composable
 private fun DeleteVehicleDialog(
     vehicleName: String,
@@ -672,198 +927,6 @@ private fun DeleteVehicleDialog(
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                 shape = RoundedCornerShape(10.dp)
             ) { Text("Delete") }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }
-        }
-    )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Shared / reused composables
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun SettingsHeader() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp)
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-                        Color.Transparent
-                    )
-                )
-            )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Manage vehicles, backup & restore data",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text.uppercase(),
-        style = MaterialTheme.typography.labelSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-    )
-}
-
-@Composable
-private fun DataActionCard(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    actionLabel: String,
-    isLoading: Boolean,
-    accentColor: Color,
-    onActionClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(iconTint.copy(alpha = 0.14f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(26.dp))
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = androidx.compose.ui.unit.TextUnit(18f, androidx.compose.ui.unit.TextUnitType.Sp)
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(
-                onClick = onActionClick,
-                enabled = !isLoading,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = accentColor)
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                    Spacer(modifier = Modifier.width(8.dp))
-                }
-                Text(actionLabel, style = MaterialTheme.typography.labelLarge)
-            }
-        }
-    }
-}
-
-@Composable
-private fun CsvInfoCard() {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("4 CSV Files", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            listOf(
-                "Vehicles.csv" to "Vehicle definitions",
-                "Fuel_Log.csv" to "Fuel, service & expense records",
-                "Services.csv" to "Service templates (exported only)",
-                "Trip_Log.csv" to "Trip records"
-            ).forEach { (name, desc) ->
-                Row(modifier = Modifier.padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Default.InsertDriveFile, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(16.dp).padding(top = 2.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(name, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f))
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("⚠ Import will replace all existing data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
-        }
-    }
-}
-
-@Composable
-private fun ImportConfirmationDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(20.dp),
-        icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
-        title = { Text("Replace All Data?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
-        text = {
-            Text(
-                "This will permanently delete all current vehicles, fuel logs, service records, expenses and trips — then replace them with data from the selected CSV files.\n\nThis action cannot be undone.",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        confirmButton = {
-            Button(onClick = onConfirm, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error), shape = RoundedCornerShape(10.dp)) {
-                Text("Yes, Replace")
-            }
         },
         dismissButton = {
             OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(10.dp)) { Text("Cancel") }

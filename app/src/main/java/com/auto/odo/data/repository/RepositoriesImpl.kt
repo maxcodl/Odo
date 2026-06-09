@@ -12,6 +12,7 @@ class VehicleRepositoryImpl @Inject constructor(
     override fun getAllVehicles(): Flow<List<VehicleEntity>> = dao.getAllVehicles()
     override suspend fun getVehicleById(id: Long): VehicleEntity? = dao.getVehicleById(id)
     override suspend fun insertVehicle(vehicle: VehicleEntity): Long = dao.insertVehicle(vehicle)
+    override suspend fun updateVehicle(vehicle: VehicleEntity) = dao.updateVehicle(vehicle)
     override suspend fun deleteVehicle(vehicle: VehicleEntity) = dao.deleteVehicle(vehicle)
     override suspend fun getAllVehiclesList(): List<VehicleEntity> = dao.getAllVehiclesList()
     override suspend fun insertAllVehicles(vehicles: List<VehicleEntity>): List<Long> = dao.insertAll(vehicles)

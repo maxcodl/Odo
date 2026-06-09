@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,9 +26,14 @@ import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LogsFeedScreen(viewModel: LogsFeedViewModel) {
+fun LogsFeedScreen(
+    viewModel: LogsFeedViewModel,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false
+) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     // Show undo snackbar whenever pendingDeleteLog appears
     LaunchedEffect(uiState.pendingDeleteLog) {
@@ -50,6 +56,8 @@ fun LogsFeedScreen(viewModel: LogsFeedViewModel) {
     }
 
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState) { data ->
                 Snackbar(
@@ -64,6 +72,7 @@ fun LogsFeedScreen(viewModel: LogsFeedViewModel) {
         topBar = {
             TopAppBar(
                 title = { Text("Log Feed", fontWeight = FontWeight.Bold) },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )

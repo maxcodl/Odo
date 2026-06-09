@@ -218,6 +218,11 @@ class ExportDataUseCase @Inject constructor(
                     CsvManager.writeServicesCsv(writer, vehicles, serviceLogs, expenseLogs, vehicleIdToName)
                 }
 
+                // ── Write About_Format.txt ────────────────────────────────────────
+                writeFile(folder, "About_Format.txt", "text/plain") { writer ->
+                    CsvManager.writeAboutFormat(writer)
+                }
+
                 ImportExportResult.Success(
                     ExportSummary(
                         vehicleCount = vehicles.size,
@@ -239,11 +244,12 @@ class ExportDataUseCase @Inject constructor(
     private fun writeFile(
         folder: DocumentFile,
         fileName: String,
+        mimeType: String = "text/csv",
         block: (BufferedWriter) -> Unit
     ) {
         // Delete existing file if present so we can recreate it
         folder.findFile(fileName)?.delete()
-        val file = folder.createFile("text/csv", fileName)
+        val file = folder.createFile(mimeType, fileName)
             ?: throw IllegalStateException("Could not create $fileName in the selected folder.")
         context.contentResolver.openOutputStream(file.uri)?.use { stream ->
             BufferedWriter(OutputStreamWriter(stream, Charsets.UTF_8)).use { writer ->

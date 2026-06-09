@@ -7,6 +7,7 @@ interface VehicleRepository {
     fun getAllVehicles(): Flow<List<VehicleEntity>>
     suspend fun getVehicleById(id: Long): VehicleEntity?
     suspend fun insertVehicle(vehicle: VehicleEntity): Long
+    suspend fun updateVehicle(vehicle: VehicleEntity)
     suspend fun deleteVehicle(vehicle: VehicleEntity)
     suspend fun getAllVehiclesList(): List<VehicleEntity>
     suspend fun insertAllVehicles(vehicles: List<VehicleEntity>): List<Long>
