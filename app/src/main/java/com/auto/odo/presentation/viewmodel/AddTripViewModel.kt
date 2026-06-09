@@ -14,6 +14,7 @@ import com.auto.odo.domain.usecase.ValidateOdometerUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
 
 data class AddTripUiState(
@@ -49,12 +50,14 @@ class AddTripViewModel @Inject constructor(
                     val vehicle = vehicleRepo.getVehicleById(vehicleId) ?: return@collectLatest
                     val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
                     val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
-                    val displayLastOdo = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
+                    val lastOdoDisplay = if (vehicle.distanceUnit == "miles")
+                        UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
                     _uiState.update {
                         it.copy(
                             selectedVehicle = vehicle,
-                            lastKnownOdometer = displayLastOdo,
-                            startOdo = if (displayLastOdo > 0) String.format(java.util.Locale.US, "%.1f", displayLastOdo) else ""
+                            lastKnownOdometer = lastOdoDisplay,
+                            startOdo = if (lastOdoDisplay > 0)
+                                String.format(Locale.US, "%.1f", lastOdoDisplay) else ""
                         )
                     }
                 }
@@ -74,7 +77,7 @@ class AddTripViewModel @Inject constructor(
             val diff = if (endVal > startVal) (endVal - startVal) else 0.0
             state.copy(
                 startOdo = odo,
-                distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
+                distanceDisplay = String.format(Locale.US, "%.1f", diff),
                 odoError = null
             )
         }
@@ -88,7 +91,7 @@ class AddTripViewModel @Inject constructor(
             val diff = if (endVal > startVal) (endVal - startVal) else 0.0
             state.copy(
                 endOdo = odo,
-                distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
+                distanceDisplay = String.format(Locale.US, "%.1f", diff),
                 odoError = null
             )
         }
@@ -105,56 +108,32 @@ class AddTripViewModel @Inject constructor(
 
     private fun validateOdometers() {
         val vehicle = _uiState.value.selectedVehicle ?: return
-        val startValRaw = _uiState.value.startOdo.replace(',', '.').toDoubleOrNull()
-        val endValRaw = _uiState.value.endOdo.replace(',', '.').toDoubleOrNull()
+        val startVal = _uiState.value.startOdo.replace(',', '.').toDoubleOrNull()
+        val endVal = _uiState.value.endOdo.replace(',', '.').toDoubleOrNull()
 
-        if (startValRaw != null && endValRaw != null && endValRaw < startValRaw) {
+        if (startVal != null && endVal != null && endVal < startVal) {
             _uiState.update { it.copy(odoError = "End Odometer cannot be less than Start Odometer") }
             return
         }
 
         viewModelScope.launch {
-            if (startValRaw != null) {
-                val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startValRaw) else startValRaw
-                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startValKm)
+            if (startVal != null) {
+                val startKm = toStoredDistance(startVal, vehicle)
+                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startKm)
                 if (startValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
-                        it.copy(
-                            odoError = when (startValidation) {
-                                is OdoValidationResult.InvalidBefore -> {
-                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(startValidation.limit) else startValidation.limit
-                                    "Start odometer is lower than previous log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
-                                }
-                                is OdoValidationResult.InvalidAfter -> {
-                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(startValidation.limit) else startValidation.limit
-                                    "Start odometer is higher than subsequent log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
-                                }
-                                else -> "Invalid start odometer"
-                            }
-                        )
+                        it.copy(odoError = formatTripValidationError("Start", startValidation, vehicle))
                     }
                     return@launch
                 }
             }
 
-            if (endValRaw != null) {
-                val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endValRaw) else endValRaw
-                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endValKm)
+            if (endVal != null) {
+                val endKm = toStoredDistance(endVal, vehicle)
+                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endKm)
                 if (endValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
-                        it.copy(
-                            odoError = when (endValidation) {
-                                is OdoValidationResult.InvalidBefore -> {
-                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(endValidation.limit) else endValidation.limit
-                                    "End odometer is lower than previous log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
-                                }
-                                is OdoValidationResult.InvalidAfter -> {
-                                    val limitDisplay = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(endValidation.limit) else endValidation.limit
-                                    "End odometer is higher than subsequent log (${String.format(java.util.Locale.US, "%.1f", limitDisplay)} ${vehicle.distanceUnit})"
-                                }
-                                else -> "Invalid end odometer"
-                            }
-                        )
+                        it.copy(odoError = formatTripValidationError("End", endValidation, vehicle))
                     }
                     return@launch
                 }
@@ -162,47 +141,76 @@ class AddTripViewModel @Inject constructor(
         }
     }
 
+    private fun toStoredDistance(value: Double, vehicle: VehicleEntity): Double =
+        if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(value) else value
+
+    private fun fromStoredDistance(value: Double, vehicle: VehicleEntity): Double =
+        if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(value) else value
+
+    private fun formatTripValidationError(
+        label: String,
+        validation: OdoValidationResult,
+        vehicle: VehicleEntity
+    ): String = when (validation) {
+        is OdoValidationResult.InvalidBefore ->
+            String.format(
+                Locale.US,
+                "$label odometer is lower than previous log (%.1f ${vehicle.distanceUnit})",
+                fromStoredDistance(validation.limit, vehicle)
+            )
+        is OdoValidationResult.InvalidAfter ->
+            String.format(
+                Locale.US,
+                "$label odometer is higher than subsequent log (%.1f ${vehicle.distanceUnit})",
+                fromStoredDistance(validation.limit, vehicle)
+            )
+        else -> "Invalid ${label.lowercase(Locale.US)} odometer"
+    }
+
     fun saveTrip() {
         val state = _uiState.value
         val vehicle = state.selectedVehicle ?: return
-        val startValRaw = state.startOdo.replace(',', '.').toDoubleOrNull()
-        val endValRaw = state.endOdo.replace(',', '.').toDoubleOrNull()
+        val startVal = state.startOdo.replace(',', '.').toDoubleOrNull()
+        val endVal = state.endOdo.replace(',', '.').toDoubleOrNull()
 
-        if (startValRaw == null || endValRaw == null) {
+        if (startVal == null || endVal == null) {
             _uiState.update { it.copy(odoError = "Please fill in all mandatory fields correctly") }
             return
         }
 
-        if (startValRaw < 0 || endValRaw < startValRaw) {
+        if (startVal < 0 || endVal < startVal) {
             _uiState.update { it.copy(odoError = "Start Odometer must be non-negative, End Odometer must be >= Start Odometer") }
             return
         }
 
-        val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startValRaw) else startValRaw
-        val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endValRaw) else endValRaw
+        val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startVal) else startVal
+        val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endVal) else endVal
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
+            val standardStart = toStoredDistance(startVal, vehicle)
+            val standardEnd = toStoredDistance(endVal, vehicle)
+
             // Validate start
-            val startValidation = validateOdometer(vehicle.id, state.date, startValKm)
+            val startValidation = validateOdometer(vehicle.id, state.date, standardStart)
             if (startValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        odoError = "Start odometer is invalid chronologically"
+                        odoError = formatTripValidationError("Start", startValidation, vehicle)
                     )
                 }
                 return@launch
             }
 
             // Validate end
-            val endValidation = validateOdometer(vehicle.id, state.date, endValKm)
+            val endValidation = validateOdometer(vehicle.id, state.date, standardEnd)
             if (endValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
                         isSaving = false,
-                        odoError = "End odometer is invalid chronologically"
+                        odoError = formatTripValidationError("End", endValidation, vehicle)
                     )
                 }
                 return@launch

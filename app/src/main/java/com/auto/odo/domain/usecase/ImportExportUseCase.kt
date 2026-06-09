@@ -53,16 +53,15 @@ sealed class ImportExportResult<T> {
  * Room data with the imported records.
  *
  * Order of operations:
- *  1. Clear all existing data (Vehicles cascade-deletes children automatically)
- *  2. Parse & insert Vehicles → capture name→id map
- *  3. Parse & insert Fuel_Log.csv (fuel, service, expense rows)
- *  4. Parse & insert Trip_Log.csv
- *  5. Services.csv is skipped (template config only, not actual records)
+ *  1. Parse and validate Vehicles.csv plus optional log CSVs without changing Room data
+ *  2. Replace existing data in one Room transaction
+ *  3. Remap imported rows from provisional vehicle IDs to generated Room IDs
+ *  4. Services.csv is skipped (template config only, not actual records)
  */
 
 class ImportDataUseCase @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val appDatabase: AppDatabase,
+    private val db: AppDatabase,
     private val vehicleRepo: VehicleRepository,
     private val fuelLogRepo: FuelLogRepository,
     private val serviceLogRepo: ServiceLogRepository,
@@ -75,7 +74,8 @@ class ImportDataUseCase @Inject constructor(
                 val folder = DocumentFile.fromTreeUri(context, folderUri)
                     ?: return@withContext ImportExportResult.Error("Cannot access selected folder.")
 
-                // ── 1. Parse Vehicles.csv ─────────────────────────────────────────
+                // Parse and validate everything we can before touching the existing DB.
+                // This prevents a wrong folder or corrupt CSV from wiping user data.
                 val vehiclesFile = folder.findFile("Vehicles.csv")
                     ?: return@withContext ImportExportResult.Error("Vehicles.csv not found in selected folder.")
 
@@ -88,81 +88,88 @@ class ImportDataUseCase @Inject constructor(
                     return@withContext ImportExportResult.Error("Vehicles.csv contains no vehicles.")
                 }
 
-                // ── 2. Parse Fuel_Log.csv ─────────────────────────────────────────
+                // Use stable provisional IDs while parsing dependent files. They are remapped
+                // to Room's generated IDs inside the transaction below.
+                val provisionalVehicleNameToId = vehicleEntities
+                    .mapIndexed { index, vehicle -> vehicle.name.trim() to -(index + 1L) }
+                    .toMap()
+
                 val fuelLogFile = folder.findFile("Fuel_Log.csv")
-                
-                // We will defer actual relationship mapping until inside the transaction
-                // since CsvManager needs vehicleNameToId. But we can parse first and then update IDs, or just do everything in transaction.
-                // Doing it all in transaction is safe if the transaction is fast.
-                
-                var summary: ImportSummary? = null
-                
-                appDatabase.withTransaction {
-                    // Wipe existing data (FK cascade handles children)
+                val parsedFuel = if (fuelLogFile != null) {
+                    context.contentResolver
+                        .openInputStream(fuelLogFile.uri)
+                        ?.use { stream ->
+                            CsvManager.parseFuelLogCsv(
+                                BufferedReader(InputStreamReader(stream)),
+                                provisionalVehicleNameToId
+                            )
+                        }
+                        ?: return@withContext ImportExportResult.Error("Could not read Fuel_Log.csv.")
+                } else {
+                    Log.w(TAG, "Fuel_Log.csv not found — skipping.")
+                    CsvManager.FuelLogParseResult(emptyList(), emptyList(), emptyList())
+                }
+
+                val tripLogFile = folder.findFile("Trip_Log.csv")
+                val parsedTrips = if (tripLogFile != null) {
+                    context.contentResolver
+                        .openInputStream(tripLogFile.uri)
+                        ?.use { stream ->
+                            CsvManager.parseTripLogCsv(
+                                BufferedReader(InputStreamReader(stream)),
+                                provisionalVehicleNameToId
+                            )
+                        }
+                        ?: return@withContext ImportExportResult.Error("Could not read Trip_Log.csv.")
+                } else {
+                    Log.w(TAG, "Trip_Log.csv not found — skipping.")
+                    emptyList()
+                }
+
+                var fuelCount = 0
+                var serviceCount = 0
+                var expenseCount = 0
+                var tripCount = 0
+
+                db.withTransaction {
                     vehicleRepo.deleteAllVehicles()
-                    
-                    val vehicleNameToId = mutableMapOf<String, Long>()
-                    vehicleEntities.forEach { v ->
-                        val newId = vehicleRepo.insertVehicle(v)
-                        vehicleNameToId[v.name.trim()] = newId
+
+                    val provisionalToActualId = mutableMapOf<Long, Long>()
+                    vehicleEntities.forEach { vehicle ->
+                        val newId = vehicleRepo.insertVehicle(vehicle)
+                        val provisionalId = provisionalVehicleNameToId.getValue(vehicle.name.trim())
+                        provisionalToActualId[provisionalId] = newId
                     }
 
-                    var fuelCount = 0
-                    var serviceCount = 0
-                    var expenseCount = 0
+                    fun actualVehicleId(provisionalId: Long): Long =
+                        provisionalToActualId[provisionalId]
+                            ?: error("Vehicle ID mapping missing for imported row: $provisionalId")
 
-                    if (fuelLogFile != null) {
-                        val result = context.contentResolver
-                            .openInputStream(fuelLogFile.uri)
-                            ?.use { stream ->
-                                CsvManager.parseFuelLogCsv(
-                                    BufferedReader(InputStreamReader(stream)),
-                                    vehicleNameToId
-                                )
-                            }
-                        if (result != null) {
-                            if (result.fuelLogs.isNotEmpty()) {
-                                fuelLogRepo.insertAllFuelLogs(result.fuelLogs)
-                                fuelCount = result.fuelLogs.size
-                            }
-                            if (result.serviceLogs.isNotEmpty()) {
-                                serviceLogRepo.insertAllServiceLogs(result.serviceLogs)
-                                serviceCount = result.serviceLogs.size
-                            }
-                            if (result.expenseLogs.isNotEmpty()) {
-                                expenseLogRepo.insertAllExpenseLogs(result.expenseLogs)
-                                expenseCount = result.expenseLogs.size
-                            }
-                        }
-                    }
+                    val fuelLogs = parsedFuel.fuelLogs.map { it.copy(vehicleId = actualVehicleId(it.vehicleId)) }
+                    val serviceLogs = parsedFuel.serviceLogs.map { it.copy(vehicleId = actualVehicleId(it.vehicleId)) }
+                    val expenseLogs = parsedFuel.expenseLogs.map { it.copy(vehicleId = actualVehicleId(it.vehicleId)) }
+                    val trips = parsedTrips.map { it.copy(vehicleId = actualVehicleId(it.vehicleId)) }
 
-                    var tripCount = 0
-                    val tripLogFile = folder.findFile("Trip_Log.csv")
-                    if (tripLogFile != null) {
-                        val trips = context.contentResolver
-                            .openInputStream(tripLogFile.uri)
-                            ?.use { stream ->
-                                CsvManager.parseTripLogCsv(
-                                    BufferedReader(InputStreamReader(stream)),
-                                    vehicleNameToId
-                                )
-                            }
-                        if (!trips.isNullOrEmpty()) {
-                            tripLogRepo.insertAllTripLogs(trips)
-                            tripCount = trips.size
-                        }
-                    }
+                    if (fuelLogs.isNotEmpty()) fuelLogRepo.insertAllFuelLogs(fuelLogs)
+                    if (serviceLogs.isNotEmpty()) serviceLogRepo.insertAllServiceLogs(serviceLogs)
+                    if (expenseLogs.isNotEmpty()) expenseLogRepo.insertAllExpenseLogs(expenseLogs)
+                    if (trips.isNotEmpty()) tripLogRepo.insertAllTripLogs(trips)
 
-                    summary = ImportSummary(
+                    fuelCount = fuelLogs.size
+                    serviceCount = serviceLogs.size
+                    expenseCount = expenseLogs.size
+                    tripCount = trips.size
+                }
+
+                ImportExportResult.Success(
+                    ImportSummary(
                         vehicleCount = vehicleEntities.size,
                         fuelCount = fuelCount,
                         serviceCount = serviceCount,
                         expenseCount = expenseCount,
                         tripCount = tripCount
                     )
-                }
-
-                ImportExportResult.Success(summary!!)
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Import failed", e)
                 ImportExportResult.Error("Import failed: ${e.localizedMessage}")

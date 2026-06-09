@@ -216,8 +216,11 @@ fun <T> SwipeToDeleteContainer(
 fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUnit: String = "Liters") {
     val formattedDate = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(log.date))
     val sym = currencySymbol(currency)
-    
-    val fuelLabel = if (fuelUnit == "Gallons") "gal" else "L"
+    fun displayDistance(km: Double): Double = if (distUnit == "miles") UnitConverter.kmToMiles(km) else km
+    fun displayFuel(liters: Double): Double = if (fuelUnit == "Gallons") UnitConverter.litersToGallons(liters) else liters
+    fun displayPricePerFuelUnit(log: LogItem.Fuel): Double =
+        if (fuelUnit == "Gallons") log.pricePerUnit * UnitConverter.gallonsToLiters(1.0) else log.pricePerUnit
+    val fuelUnitLabel = if (fuelUnit == "Gallons") "gal" else "L"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -231,17 +234,12 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUni
             verticalAlignment = Alignment.CenterVertically
         ) {
             val (triple, subtitle) = when (log) {
-                is LogItem.Fuel -> {
-                    val displayQty = if (fuelUnit == "Gallons") UnitConverter.litersToGallons(log.quantity) else log.quantity
-                    // Price per unit needs to be adjusted. Cost = Qty * Price.
-                    // If we display in gallons, PricePerGal = Cost / displayQty.
-                    val displayPrice = if (displayQty > 0) log.totalCost / displayQty else 0.0
-                    Triple(
-                        Icons.Default.LocalGasStation,
-                        MaterialTheme.colorScheme.primary,
-                        "Fuel Fill-Up"
-                    ) to "${String.format(Locale.US, "%.2f", displayQty)} $fuelLabel · ${sym}${String.format(Locale.US, "%.2f", displayPrice)}/$fuelLabel"
-                }
+                is LogItem.Fuel -> Triple(
+                    Icons.Default.LocalGasStation,
+                    MaterialTheme.colorScheme.primary,
+                    "Fuel Fill-Up"
+                ) to "${String.format(Locale.US, "%.2f", displayFuel(log.quantity))} $fuelUnitLabel · " +
+                    "${sym}${String.format(Locale.US, "%.2f", displayPricePerFuelUnit(log))}/$fuelUnitLabel"
 
                 is LogItem.Service -> Triple(
                     Icons.Default.Build,
@@ -255,15 +253,11 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUni
                     "Expense: ${log.category}"
                 ) to (log.notes ?: "Category expense")
 
-                is LogItem.Trip -> {
-                    val rawDistance = log.endOdo - log.startOdo
-                    val displayDistance = if (distUnit == "miles") UnitConverter.kmToMiles(rawDistance) else rawDistance
-                    Triple(
-                        Icons.Default.DirectionsCar,
-                        MaterialTheme.colorScheme.primary,
-                        "Trip (${log.purpose})"
-                    ) to "Distance: ${String.format(Locale.US, "%.1f", displayDistance)} $distUnit"
-                }
+                is LogItem.Trip -> Triple(
+                    Icons.Default.DirectionsCar,
+                    MaterialTheme.colorScheme.primary,
+                    "Trip (${log.purpose})"
+                ) to "Distance: ${String.format(Locale.US, "%.1f", displayDistance(log.endOdo - log.startOdo))} $distUnit"
             }
             val (icon, tint, title) = triple
 
@@ -290,7 +284,7 @@ fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUni
                 if (log is LogItem.Fuel) {
                     val displayOdo = if (distUnit == "miles") UnitConverter.kmToMiles(log.odometer).toInt() else log.odometer.toInt()
                     Text(
-                        text = "Odo: $displayOdo $distUnit",
+                        text = "Odo: ${String.format(Locale.US, "%.0f", displayDistance(log.odometer))} $distUnit",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -1,5 +1,7 @@
 package com.auto.odo.presentation.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -19,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,6 +38,12 @@ import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
 import com.auto.odo.presentation.viewmodel.SettingsViewModel
 import com.auto.odo.presentation.viewmodel.currencySymbol
 
+private fun persistTreeUriPermission(context: android.content.Context, uri: Uri, flags: Int) {
+    runCatching {
+        context.contentResolver.takePersistableUriPermission(uri, flags)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -43,13 +52,24 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // SAF launchers
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) viewModel.onImportFolderSelected(uri)
+        if (uri != null) {
+            persistTreeUriPermission(context, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            viewModel.onImportFolderSelected(uri)
+        }
     }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) viewModel.onExportFolderSelected(uri)
+        if (uri != null) {
+            persistTreeUriPermission(
+                context,
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+            viewModel.onExportFolderSelected(uri)
+        }
     }
 
     // Snackbar
