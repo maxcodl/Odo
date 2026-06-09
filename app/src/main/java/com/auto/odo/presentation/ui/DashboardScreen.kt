@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import com.auto.odo.core.UnitConverter
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.usecase.LogItem
 import com.auto.odo.presentation.viewmodel.ChartPoint
@@ -510,15 +511,13 @@ fun BezierChart(
             ) {
                 Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(dateFormatter.format(Date(point.date)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${efficiencyFormat.format(point.value)} $distanceUnit/${if(fuelUnit == "Liters") "L" else "gal"}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text("${efficiencyFormat.format(point.value)} $distanceUnit/${if(fuelUnit == \"Liters\") \"L\" else \"gal\"}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp).clickable { selectedIndex = -1 }, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }
         }
     }
 }
-
-import com.auto.odo.core.UnitConverter
 
 @Composable
 fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateFormatter: SimpleDateFormat, costFormat: String) {
@@ -529,10 +528,10 @@ fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateF
     ) {
         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             val (icon, tint, title) = when (log) {
-                is LogItem.Fuel -> Triple(Icons.Default.LocalGasStation, MaterialTheme.colorScheme.primary, "Fill-Up")
-                is LogItem.Service -> Triple(Icons.Default.Build, MaterialTheme.colorScheme.secondary, "Service: ${log.serviceType}")
-                is LogItem.Expense -> Triple(Icons.Default.ShoppingCart, MaterialTheme.colorScheme.tertiary, "Expense: ${log.category}")
-                is LogItem.Trip -> Triple(Icons.Default.DirectionsCar, MaterialTheme.colorScheme.primary, "Trip: ${log.purpose}")
+                is LogItem.Fuel -> Triple(Icons.Default.LocalGasStation, MaterialTheme.colorScheme.primary, \"Fill-Up\")
+                is LogItem.Service -> Triple(Icons.Default.Build, MaterialTheme.colorScheme.secondary, \"Service: ${log.serviceType}\")
+                is LogItem.Expense -> Triple(Icons.Default.ShoppingCart, MaterialTheme.colorScheme.tertiary, \"Expense: ${log.category}\")
+                is LogItem.Trip -> Triple(Icons.Default.DirectionsCar, MaterialTheme.colorScheme.primary, \"Trip: ${log.purpose}\")
             }
             Box(modifier = Modifier.size(40.dp).background(tint.copy(alpha = 0.15f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
                 Icon(imageVector = icon, contentDescription = null, tint = tint)
@@ -544,10 +543,10 @@ fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateF
             }
             Column(horizontalAlignment = Alignment.End) {
                 if (log is LogItem.Fuel) {
-                    val displayOdo = if (distanceUnit == "miles") UnitConverter.kmToMiles(log.odometer).toInt() else log.odometer.toInt()
-                    Text(text = "$displayOdo $distanceUnit", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    val displayOdo = if (distanceUnit == \"miles\") UnitConverter.kmToMiles(log.odometer).toInt() else log.odometer.toInt()
+                    Text(text = \"$displayOdo $distanceUnit\", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
-                if (log.totalCost > 0) Text(text = "$currency ${costFormat.format(log.totalCost)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                if (log.totalCost > 0) Text(text = \"$currency ${costFormat.format(log.totalCost)}\", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -556,39 +555,39 @@ fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateF
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddVehicleDialog(onDismiss: () -> Unit, onConfirm: (name: String, type: String, fuelUnit: String, distanceUnit: String, currency: String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var type by remember { mutableStateOf("Car") }
-    var fuelUnit by remember { mutableStateOf("Liters") }
-    var distanceUnit by remember { mutableStateOf("km") }
-    var currency by remember { mutableStateOf("INR") }
+    var name by remember { mutableStateOf(\"\") }
+    var type by remember { mutableStateOf(\"Car\") }
+    var fuelUnit by remember { mutableStateOf(\"Liters\") }
+    var distanceUnit by remember { mutableStateOf(\"km\") }
+    var currency by remember { mutableStateOf(\"INR\") }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Column(modifier = Modifier.padding(20.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Add New Vehicle", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Vehicle Name (e.g. Yamaha R15)") }, modifier = Modifier.fillMaxWidth())
-                Text("Vehicle Type", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                Text(\"Add New Vehicle\", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(\"Vehicle Name (e.g. Yamaha R15)\") }, modifier = Modifier.fillMaxWidth())
+                Text(\"Vehicle Type\", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "Car", onClick = { type = "Car" }); Text("Car") }
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "Bike", onClick = { type = "Bike" }); Text("Bike") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == \"Car\", onClick = { type = \"Car\" }); Text(\"Car\") }
+                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == \"Bike\", onClick = { type = \"Bike\" }); Text(\"Bike\") }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Distance Unit", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == "km", onClick = { distanceUnit = "km" }); Text("km", style = MaterialTheme.typography.bodySmall) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == "miles", onClick = { distanceUnit = "miles" }); Text("miles", style = MaterialTheme.typography.bodySmall) }
+                        Text(\"Distance Unit\", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == \"km\", onClick = { distanceUnit = \"km\" }); Text(\"km\", style = MaterialTheme.typography.bodySmall) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == \"miles\", onClick = { distanceUnit = \"miles\" }); Text(\"miles\", style = MaterialTheme.typography.bodySmall) }
                     }
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Fuel Unit", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == "Liters", onClick = { fuelUnit = "Liters" }); Text("Liters", style = MaterialTheme.typography.bodySmall) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == "Gallons", onClick = { fuelUnit = "Gallons" }); Text("Gallons", style = MaterialTheme.typography.bodySmall) }
+                        Text(\"Fuel Unit\", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == \"Liters\", onClick = { fuelUnit = \"Liters\" }); Text(\"Liters\", style = MaterialTheme.typography.bodySmall) }
+                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == \"Gallons\", onClick = { fuelUnit = \"Gallons\" }); Text(\"Gallons\", style = MaterialTheme.typography.bodySmall) }
                     }
                 }
-                OutlinedTextField(value = currency, onValueChange = { currency = it }, label = { Text("Currency Symbol (e.g. INR, USD)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = currency, onValueChange = { currency = it }, label = { Text(\"Currency Symbol (e.g. INR, USD)\") }, modifier = Modifier.fillMaxWidth())
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    TextButton(onClick = onDismiss) { Text(\"Cancel\") }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = { if (name.isNotBlank()) onConfirm(name, type, fuelUnit, distanceUnit, currency) }, enabled = name.isNotBlank()) { Text("Save") }
+                    Button(onClick = { if (name.isNotBlank()) onConfirm(name, type, fuelUnit, distanceUnit, currency) }, enabled = name.isNotBlank()) { Text(\"Save\") }
                 }
             }
         }
