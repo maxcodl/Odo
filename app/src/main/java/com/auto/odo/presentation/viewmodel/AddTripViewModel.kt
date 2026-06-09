@@ -182,9 +182,6 @@ class AddTripViewModel @Inject constructor(
             return
         }
 
-        val startValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(startVal) else startVal
-        val endValKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(endVal) else endVal
-
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
@@ -218,8 +215,8 @@ class AddTripViewModel @Inject constructor(
             val entity = TripLogEntity(
                 vehicleId = vehicle.id,
                 date = state.date,
-                startOdo = startValKm,
-                endOdo = endValKm,
+                startOdo = standardStart,
+                endOdo = standardEnd,
                 purpose = state.purpose,
                 notes = state.notes.ifBlank { null }
             )
