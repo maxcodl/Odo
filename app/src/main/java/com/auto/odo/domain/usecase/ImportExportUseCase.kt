@@ -90,7 +90,6 @@ class ImportDataUseCase @Inject constructor(
 
                 // ── 2. Parse Fuel_Log.csv ─────────────────────────────────────────
                 val fuelLogFile = folder.findFile("Fuel_Log.csv")
-                var fuelLogResult: CsvManager.CombinedLogsResult? = null
                 
                 // We will defer actual relationship mapping until inside the transaction
                 // since CsvManager needs vehicleNameToId. But we can parse first and then update IDs, or just do everything in transaction.

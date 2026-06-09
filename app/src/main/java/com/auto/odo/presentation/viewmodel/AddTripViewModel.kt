@@ -46,7 +46,7 @@ class AddTripViewModel @Inject constructor(
         viewModelScope.launch {
             sessionManager.currentVehicleId.collectLatest { vehicleId ->
                 if (vehicleId != null) {
-                    val vehicle = vehicleRepo.getVehicleById(vehicleId)
+                    val vehicle = vehicleRepo.getVehicleById(vehicleId) ?: return@collectLatest
                     val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
                     val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
                     val displayLastOdo = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm

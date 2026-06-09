@@ -14,21 +14,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.data.entity.VehicleEntity
+import com.auto.odo.presentation.theme.OdoTheme
+import com.auto.odo.presentation.viewmodel.AddTripUiState
 import com.auto.odo.presentation.viewmodel.AddTripViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTripScreen(
     viewModel: AddTripViewModel,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
 
+    AddTripContent(
+        uiState = uiState,
+        onNavigateBack = onNavigateBack,
+        onDateChanged = viewModel::onDateChanged,
+        onStartOdoChanged = viewModel::onStartOdoChanged,
+        onEndOdoChanged = viewModel::onEndOdoChanged,
+        onPurposeChanged = viewModel::onPurposeChanged,
+        onNotesChanged = viewModel::onNotesChanged,
+        onSaveTrip = viewModel::saveTrip
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddTripContent(
+    uiState: AddTripUiState,
+    onNavigateBack: () -> Unit,
+    onDateChanged: (Long) -> Unit,
+    onStartOdoChanged: (String) -> Unit,
+    onEndOdoChanged: (String) -> Unit,
+    onPurposeChanged: (String) -> Unit,
+    onNotesChanged: (String) -> Unit,
+    onSaveTrip: () -> Unit
+) {
+    val scrollState = rememberScrollState()
     var showDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.saveSuccess) {
@@ -55,7 +82,8 @@ fun AddTripScreen(
         val vehicle = uiState.selectedVehicle
         if (vehicle == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                if (uiState.isSaving) CircularProgressIndicator() 
+                else Text("No vehicle selected")
             }
             return@Scaffold
         }
@@ -93,7 +121,7 @@ fun AddTripScreen(
             }
 
             // 2. Date Picker
-            val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+            val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
                 value = sdf.format(Date(uiState.date)),
                 onValueChange = {},
@@ -110,7 +138,7 @@ fun AddTripScreen(
             // 3. Start Odometer Input
             OutlinedTextField(
                 value = uiState.startOdo,
-                onValueChange = { viewModel.onStartOdoChanged(it) },
+                onValueChange = onStartOdoChanged,
                 label = { Text("Start Odometer (${vehicle.distanceUnit})") },
                 placeholder = { Text("Last known: ${uiState.lastKnownOdometer}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -120,13 +148,13 @@ fun AddTripScreen(
             // 4. End Odometer Input
             OutlinedTextField(
                 value = uiState.endOdo,
-                onValueChange = { viewModel.onEndOdoChanged(it) },
+                onValueChange = onEndOdoChanged,
                 label = { Text("End Odometer (${vehicle.distanceUnit})") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = uiState.odoError != null,
                 supportingText = {
                     if (uiState.odoError != null) {
-                        Text(uiState.odoError!!, color = MaterialTheme.colorScheme.error)
+                        Text(uiState.odoError, color = MaterialTheme.colorScheme.error)
                     } else {
                         Text("Must be chronological and >= Start Odometer.")
                     }
@@ -162,14 +190,14 @@ fun AddTripScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = uiState.purpose == "Personal",
-                        onClick = { viewModel.onPurposeChanged("Personal") }
+                        onClick = { onPurposeChanged("Personal") }
                     )
                     Text("Personal")
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
                         selected = uiState.purpose == "Business",
-                        onClick = { viewModel.onPurposeChanged("Business") }
+                        onClick = { onPurposeChanged("Business") }
                     )
                     Text("Business")
                 }
@@ -178,7 +206,7 @@ fun AddTripScreen(
             // 7. Notes
             OutlinedTextField(
                 value = uiState.notes,
-                onValueChange = { viewModel.onNotesChanged(it) },
+                onValueChange = onNotesChanged,
                 label = { Text("Notes (Optional)") },
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
@@ -188,7 +216,7 @@ fun AddTripScreen(
 
             // Save Button
             Button(
-                onClick = { viewModel.saveTrip() },
+                onClick = onSaveTrip,
                 enabled = !uiState.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -211,7 +239,7 @@ fun AddTripScreen(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        viewModel.onDateChanged(it)
+                        onDateChanged(it)
                     }
                     showDatePicker = false
                 }) {
@@ -226,5 +254,27 @@ fun AddTripScreen(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AddTripPreview() {
+    OdoTheme {
+        AddTripContent(
+            uiState = AddTripUiState(
+                selectedVehicle = VehicleEntity(1, "Test Car", "Car", "Liters", "km", "INR"),
+                startOdo = "1000",
+                endOdo = "1050",
+                distanceDisplay = "50.0"
+            ),
+            onNavigateBack = {},
+            onDateChanged = {},
+            onStartOdoChanged = {},
+            onEndOdoChanged = {},
+            onPurposeChanged = {},
+            onNotesChanged = {},
+            onSaveTrip = {}
+        )
     }
 }

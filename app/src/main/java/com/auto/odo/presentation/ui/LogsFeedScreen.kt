@@ -18,6 +18,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.core.UnitConverter
 import com.auto.odo.domain.usecase.LogItem
 import com.auto.odo.presentation.viewmodel.LogsFeedViewModel
 import com.auto.odo.presentation.viewmodel.currencySymbol
@@ -210,8 +211,6 @@ fun <T> SwipeToDeleteContainer(
         content = { content(item) }
     )
 }
-
-import com.auto.odo.core.UnitConverter
 
 @Composable
 fun LogItemCard(log: LogItem, currency: String, distUnit: String = "km", fuelUnit: String = "Liters") {
