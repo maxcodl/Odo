@@ -170,8 +170,12 @@ Scaffold(
                 )
             }
 
-            composable(Screen.Analytics.route) {
-                AnalyticsMockScreen()
+composable(Screen.Analytics.route) {
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AnalyticsScreen(
+                    viewModel = hiltViewModel(activity),
+                    fullScreenStatusBar = fullScreenStatusBar
+                )
             }
 
             composable(Screen.Settings.route) {
@@ -359,18 +363,6 @@ fun FloatingNavigationBar(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun AnalyticsMockScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Timeline, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Analytics Coming Soon", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("Deep insights into your vehicle's performance.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

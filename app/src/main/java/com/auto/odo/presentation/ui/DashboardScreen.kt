@@ -3,12 +3,14 @@ package com.auto.odo.presentation.ui
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -25,21 +27,23 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.core.UnitConverter
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.usecase.LogItem
+import com.auto.odo.presentation.theme.OdoTheme
 import com.auto.odo.presentation.viewmodel.ChartPoint
 import com.auto.odo.presentation.viewmodel.DashboardUiState
 import com.auto.odo.presentation.viewmodel.DashboardViewModel
+import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
+import com.auto.odo.presentation.viewmodel.currencySymbol
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.auto.odo.presentation.theme.OdoTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,7 +92,7 @@ fun DashboardScreenContent(
     onNavigateToLogs: () -> Unit = {}
 ) {
     var isVehicleMenuExpanded by remember { mutableStateOf(false) }
-    var showAddVehicleDialog by remember { mutableStateOf(false) }
+    var showAddVehicleSheet by remember { mutableStateOf(false) }
     var isFabExpanded by remember { mutableStateOf(false) }
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
@@ -152,7 +156,7 @@ fun DashboardScreenContent(
                             DropdownMenuItem(
                                 text = { Text("Add Vehicle") },
                                 onClick = {
-                                    showAddVehicleDialog = true
+                                    showAddVehicleSheet = true
                                     isVehicleMenuExpanded = false
                                 },
                                 leadingIcon = {
@@ -172,7 +176,7 @@ fun DashboardScreenContent(
                 )
             )
         },
-floatingActionButton = {
+        floatingActionButton = {
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -213,7 +217,7 @@ floatingActionButton = {
             if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else if (uiState.vehicles.isEmpty()) {
-                EmptyVehiclesState(paddingValues) { showAddVehicleDialog = true }
+                EmptyVehiclesState(paddingValues) { showAddVehicleSheet = true }
             } else {
                 DashboardContent(
                     uiState = uiState,
@@ -224,12 +228,12 @@ floatingActionButton = {
         }
     }
 
-    if (showAddVehicleDialog) {
-        AddVehicleDialog(
-            onDismiss = { showAddVehicleDialog = false },
+    if (showAddVehicleSheet) {
+        AddVehicleBottomSheet(
+            onDismiss = { showAddVehicleSheet = false },
             onConfirm = { name, type, fuelUnit, distanceUnit, currency ->
                 onAddVehicle(name, type, fuelUnit, distanceUnit, currency)
-                showAddVehicleDialog = false
+                showAddVehicleSheet = false
             }
         )
     }
@@ -602,40 +606,163 @@ fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateF
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddVehicleDialog(onDismiss: () -> Unit, onConfirm: (name: String, type: String, fuelUnit: String, distanceUnit: String, currency: String) -> Unit) {
+fun AddVehicleBottomSheet(
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, type: String, fuelUnit: String, distanceUnit: String, currency: String) -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     var name by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("Car") }
     var fuelUnit by remember { mutableStateOf("Liters") }
     var distanceUnit by remember { mutableStateOf("km") }
     var currency by remember { mutableStateOf("INR") }
 
-    Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-            Column(modifier = Modifier.padding(20.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Add New Vehicle", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Vehicle Name (e.g. Yamaha R15M)") }, modifier = Modifier.fillMaxWidth())
-                Text("Vehicle Type", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "Car", onClick = { type = "Car" }); Text("Car") }
-                    Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "Bike", onClick = { type = "Bike" }); Text("Bike") }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Distance Unit", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == "km", onClick = { distanceUnit = "km" }); Text("km", style = MaterialTheme.typography.bodySmall) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = distanceUnit == "miles", onClick = { distanceUnit = "miles" }); Text("miles", style = MaterialTheme.typography.bodySmall) }
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Fuel Unit", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == "Liters", onClick = { fuelUnit = "Liters" }); Text("Liters", style = MaterialTheme.typography.bodySmall) }
-                        Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = fuelUnit == "Gallons", onClick = { fuelUnit = "Gallons" }); Text("Gallons", style = MaterialTheme.typography.bodySmall) }
-                    }
-                }
-                OutlinedTextField(value = currency, onValueChange = { currency = it }, label = { Text("Currency Symbol (e.g. INR, USD)") }, modifier = Modifier.fillMaxWidth())
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onDismiss) { Text("Cancel") }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = { if (name.isNotBlank()) onConfirm(name, type, fuelUnit, distanceUnit, currency) }, enabled = name.isNotBlank()) { Text("Save") }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
+        ) {
+            Text(
+                text = "Add Vehicle",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Configure your vehicle's preferences",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Vehicle Name") },
+                placeholder = { Text("e.g. My Bike, Family Car") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            SheetOptionRow(
+                label = "Type",
+                options = listOf("Bike", "Car"),
+                selected = type,
+                onSelect = { type = it }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SheetOptionRow(
+                label = "Distance",
+                options = listOf("km", "miles"),
+                selected = distanceUnit,
+                onSelect = { distanceUnit = it }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SheetOptionRow(
+                label = "Fuel",
+                options = listOf("Liters", "Gallons"),
+                selected = fuelUnit,
+                onSelect = { fuelUnit = it }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SheetOptionRow(
+                label = "Currency",
+                options = SUPPORTED_CURRENCIES.map { it.first },
+                selected = currency,
+                onSelect = { currency = it },
+                labelMapper = { code -> "${currencySymbol(code)} $code" }
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = { if (name.isNotBlank()) onConfirm(name, type, fuelUnit, distanceUnit, currency) },
+                enabled = name.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Add Vehicle", style = MaterialTheme.typography.labelLarge)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text("Cancel")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SheetOptionRow(
+    label: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    labelMapper: (String) -> String = { it }
+) {
+    Column {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            options.forEach { option ->
+                val isSelected = option == selected
+                Surface(
+                    onClick = { onSelect(option) },
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(
+                            if (!isSelected) Modifier.border(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant,
+                                RoundedCornerShape(10.dp)
+                            ) else Modifier
+                        )
+                ) {
+                    Text(
+                        text = labelMapper(option),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 2.dp)
+                    )
                 }
             }
         }

@@ -84,6 +84,8 @@ fun LogsFeedContent(
     Scaffold(
         modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
+        // FIX: Ensure this Scaffold is transparent so the main app background shows through
+        containerColor = Color.Transparent, 
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState) { data ->
                 Snackbar(
@@ -99,9 +101,10 @@ fun LogsFeedContent(
             TopAppBar(
                 title = { Text("Log Feed", fontWeight = FontWeight.Bold) },
                 scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
+                // FIX: Make the TopAppBar transparent when Edge-to-Edge is enabled
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background
+                    containerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -109,8 +112,8 @@ fun LogsFeedContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.background)
+                // FIX: Only apply the top padding. Let the bottom flow edge-to-edge!
+                .padding(top = paddingValues.calculateTopPadding()) 
         ) {
             if (uiState.selectedVehicle == null && !uiState.isLoading) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -162,7 +165,8 @@ fun LogsFeedContent(
                             start = 16.dp,
                             end = 16.dp,
                             top = 8.dp,
-                            bottom = 110.dp // Extra space for FAB and Nav
+                            // FIX: Increased to 160.dp to give ample scroll clearance over the nav bar
+                            bottom = 160.dp 
                         ),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {

@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,8 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +33,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.core.NavBarStyle
 import com.auto.odo.core.AppThemeMode
@@ -39,6 +42,7 @@ import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
 import com.auto.odo.presentation.viewmodel.SettingsViewModel
 import com.auto.odo.presentation.viewmodel.currencySymbol
+import kotlinx.coroutines.delay
 
 private fun persistTreeUriPermission(context: android.content.Context, uri: Uri, flags: Int) {
     runCatching {
@@ -53,10 +57,22 @@ fun SettingsScreen(
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false
 ) {
+    val uriHandler = LocalUriHandler.current
+    var showDonatePopup by remember { mutableStateOf(false) }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+
+    // Rickroll Trigger Logic
+    if (showDonatePopup) {
+        LaunchedEffect(Unit) {
+            delay(2500) // Show balloons for 2.5 seconds
+            showDonatePopup = false
+            uriHandler.openUri("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        }
+        DonateThankYouPopup()
+    }
 
     // SAF launchers
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -127,22 +143,23 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
-        topBar = {
+     topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
+                // FIX: Force transparency when edge-to-edge is enabled
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background
+                    containerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background
                 )
             )
         }
-    ) { paddingValues ->
+) { paddingValues -> 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
+                .padding(top = paddingValues.calculateTopPadding())
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -212,7 +229,99 @@ fun SettingsScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(120.dp)) // Padding for floating nav bar
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── About & Support ───────────────────────────────────────────────
+            SectionLabel("About & Support")
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column {
+                    PreferenceRow(
+                        icon = Icons.Default.Info,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = "About Odo",
+                        subtitle = "Version 1.0.2 • Built by Max",
+                        onClick = { /* Expandable or dialog if needed later */ }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    PreferenceRow(
+                        icon = Icons.Default.Code,
+                        iconColor = MaterialTheme.colorScheme.secondary,
+                        title = "Source Code",
+                        subtitle = "View repository on GitHub",
+                        onClick = { uriHandler.openUri("https://github.com/maxcodl/Odo") }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    PreferenceRow(
+                        icon = Icons.Default.Favorite,
+                        iconColor = MaterialTheme.colorScheme.error, // Red for the heart/donate
+                        title = "Donate",
+                        subtitle = "Support the development of Odo",
+                        onClick = { showDonatePopup = true }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(160.dp))
+        }
+    }
+}
+
+@Composable
+fun DonateThankYouPopup() {
+    Dialog(onDismissRequest = {}) { // Empty dismiss request prevents closing by tapping outside
+        Card(
+            modifier = Modifier
+                .width(280.dp)
+                .height(300.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                // Floating Balloons Animation
+                val infiniteTransition = rememberInfiniteTransition(label = "balloons")
+                val yOffset by infiniteTransition.animateFloat(
+                    initialValue = 400f,
+                    targetValue = -400f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(2500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "yOffset"
+                )
+
+                // Draw balloons at staggered coordinates
+                Text("🎈", fontSize = 48.sp, modifier = Modifier.offset(x = (-60).dp, y = yOffset.dp))
+                Text("🎈", fontSize = 64.sp, modifier = Modifier.offset(x = 0.dp, y = (yOffset + 100).dp))
+                Text("🎈", fontSize = 52.sp, modifier = Modifier.offset(x = 60.dp, y = (yOffset + 50).dp))
+
+                // Thank you text layer
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "Thank You!",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+            }
         }
     }
 }

@@ -79,50 +79,86 @@ class AddFillUpViewModel @Inject constructor(
         validateOdometerChronologically()
     }
 
-    fun onQuantityChanged(qty: String) {
+fun onQuantityChanged(qty: String) {
         _uiState.update { state ->
-            val qtyVal = qty.replace(',', '.').toDoubleOrNull() ?: 0.0
-            val pPUVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull() ?: 0.0
-            val costVal = state.totalCost.replace(',', '.').toDoubleOrNull() ?: 0.0
+            // Use DoubleOrNull so empty strings are handled cleanly
+            val qtyVal = qty.replace(',', '.').toDoubleOrNull()
+            val pPUVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull()
+            val costVal = state.totalCost.replace(',', '.').toDoubleOrNull()
 
-            when {
-                qtyVal > 0 && pPUVal > 0 -> {
-                    state.copy(quantity = qty, totalCost = String.format(java.util.Locale.US, "%.2f", qtyVal * pPUVal))
+            var newState = state.copy(quantity = qty)
+
+            // If user cleared the field, stop here to avoid calculating with 0
+            if (qtyVal == null) return@update newState
+
+            if (pPUVal != null && pPUVal > 0) {
+                val calcCost = qtyVal * pPUVal
+                // ONLY update if the calculated value is mathematically different from what's currently in the box!
+                if (costVal == null || Math.abs(costVal - calcCost) > 0.01) {
+                    newState = newState.copy(totalCost = String.format(java.util.Locale.US, "%.2f", calcCost))
                 }
-                qtyVal > 0 && costVal > 0 -> {
-                    state.copy(quantity = qty, pricePerUnit = String.format(java.util.Locale.US, "%.2f", costVal / qtyVal))
+            } else if (costVal != null && costVal > 0) {
+                val calcPpu = costVal / qtyVal
+                if (pPUVal == null || Math.abs(pPUVal - calcPpu) > 0.01) {
+                    newState = newState.copy(pricePerUnit = String.format(java.util.Locale.US, "%.2f", calcPpu))
                 }
-                else -> state.copy(quantity = qty)
             }
+            newState
         }
     }
 
     fun onPricePerUnitChanged(ppu: String) {
         _uiState.update { state ->
-            val pPUVal = ppu.replace(',', '.').toDoubleOrNull() ?: 0.0
-            val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull() ?: 0.0
+            val ppuVal = ppu.replace(',', '.').toDoubleOrNull()
+            val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull()
+            val costVal = state.totalCost.replace(',', '.').toDoubleOrNull()
 
-            if (pPUVal > 0 && qtyVal > 0) {
-                state.copy(pricePerUnit = ppu, totalCost = String.format(java.util.Locale.US, "%.2f", qtyVal * pPUVal))
-            } else {
-                state.copy(pricePerUnit = ppu)
+            var newState = state.copy(pricePerUnit = ppu)
+            
+            if (ppuVal == null) return@update newState
+
+            if (qtyVal != null && qtyVal > 0) {
+                val calcCost = qtyVal * ppuVal
+                if (costVal == null || Math.abs(costVal - calcCost) > 0.01) {
+                    newState = newState.copy(totalCost = String.format(java.util.Locale.US, "%.2f", calcCost))
+                }
+            } else if (costVal != null && costVal > 0) {
+                val calcQty = costVal / ppuVal
+                if (qtyVal == null || Math.abs(qtyVal - calcQty) > 0.01) {
+                    newState = newState.copy(quantity = String.format(java.util.Locale.US, "%.2f", calcQty))
+                }
             }
+            newState
         }
     }
 
     fun onTotalCostChanged(cost: String) {
         _uiState.update { state ->
-            val costVal = cost.replace(',', '.').toDoubleOrNull() ?: 0.0
-            val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull() ?: 0.0
+            val costVal = cost.replace(',', '.').toDoubleOrNull()
+            val pPUVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull()
+            val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull()
 
-            if (costVal > 0 && qtyVal > 0) {
-                state.copy(totalCost = cost, pricePerUnit = String.format(java.util.Locale.US, "%.2f", costVal / qtyVal))
-            } else {
-                state.copy(totalCost = cost)
+            var newState = state.copy(totalCost = cost)
+            
+            if (costVal == null) return@update newState
+
+            if (pPUVal != null && pPUVal > 0) {
+                val calcQty = costVal / pPUVal
+                if (qtyVal == null || Math.abs(qtyVal - calcQty) > 0.01) {
+                    newState = newState.copy(quantity = String.format(java.util.Locale.US, "%.2f", calcQty))
+                }
+            } else if (qtyVal != null && qtyVal > 0) {
+                val calcPpu = costVal / qtyVal
+                if (pPUVal == null || Math.abs(pPUVal - calcPpu) > 0.01) {
+                    newState = newState.copy(pricePerUnit = String.format(java.util.Locale.US, "%.2f", calcPpu))
+                }
             }
+            newState
         }
     }
 
+
+    
     fun onPartialTankChanged(partial: Boolean) {
         _uiState.update { it.copy(isPartialTank = partial) }
     }

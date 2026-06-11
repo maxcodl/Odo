@@ -12,7 +12,6 @@ interface VehicleDao {
     @Query("SELECT * FROM vehicles WHERE id = :id LIMIT 1")
     suspend fun getVehicleById(id: Long): VehicleEntity?
 
-    // NEW: Flow version so we can watch a single vehicle without scanning the whole table
     @Query("SELECT * FROM vehicles WHERE id = :id LIMIT 1")
     fun getVehicleByIdFlow(id: Long): Flow<VehicleEntity?>
 
@@ -49,6 +48,20 @@ interface FuelLogDao {
     @Query("SELECT SUM(totalCost) FROM fuel_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getFuelCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
 
+    // --- ANALYTICS QUERIES ---
+    @Query("SELECT SUM(totalCost) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getTotalFuelCost(vehicleId: Long): Double?
+
+    @Query("SELECT SUM(quantity) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getTotalFuelVolume(vehicleId: Long): Double?
+
+    @Query("SELECT MIN(odometer) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getMinOdometer(vehicleId: Long): Double?
+
+    @Query("SELECT MAX(odometer) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getMaxOdometer(vehicleId: Long): Double?
+    // -------------------------
+
     @Query("SELECT COUNT(*) FROM fuel_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getFillUpCountSince(vehicleId: Long, sinceDate: Long): Flow<Int>
 
@@ -79,6 +92,11 @@ interface ServiceLogDao {
     @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getServiceCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
 
+    // --- ANALYTICS QUERIES ---
+    @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId")
+    suspend fun getTotalServiceCost(vehicleId: Long): Double?
+    // -------------------------
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertServiceLog(log: ServiceLogEntity): Long
 
@@ -105,6 +123,11 @@ interface ExpenseLogDao {
 
     @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getExpenseCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
+
+    // --- ANALYTICS QUERIES ---
+    @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId")
+    suspend fun getTotalExpenseCost(vehicleId: Long): Double?
+    // -------------------------
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExpenseLog(log: ExpenseLogEntity): Long
