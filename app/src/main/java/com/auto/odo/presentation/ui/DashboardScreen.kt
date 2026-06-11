@@ -27,6 +27,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.auto.odo.core.UnitConverter
@@ -38,6 +39,7 @@ import com.auto.odo.presentation.viewmodel.DashboardViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.presentation.theme.OdoTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,11 +55,42 @@ fun DashboardScreen(
     onNavigateToLogs: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    DashboardScreenContent(
+        uiState = uiState,
+        autoHideTitleBar = autoHideTitleBar,
+        fullScreenStatusBar = fullScreenStatusBar,
+        onSelectVehicle = viewModel::selectVehicle,
+        onAddVehicle = { name, type, fuelUnit, distanceUnit, currency ->
+            viewModel.addVehicle(name, type, fuelUnit, distanceUnit, currency)
+        },
+        onNavigateToAddFillUp = onNavigateToAddFillUp,
+        onNavigateToAddService = onNavigateToAddService,
+        onNavigateToAddExpense = onNavigateToAddExpense,
+        onNavigateToAddTrip = onNavigateToAddTrip,
+        onNavigateToUpdateOdo = onNavigateToUpdateOdo,
+        onNavigateToLogs = onNavigateToLogs
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DashboardScreenContent(
+    uiState: DashboardUiState,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
+    onSelectVehicle: (Long) -> Unit = {},
+    onAddVehicle: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onNavigateToAddFillUp: () -> Unit = {},
+    onNavigateToAddService: () -> Unit = {},
+    onNavigateToAddExpense: () -> Unit = {},
+    onNavigateToAddTrip: () -> Unit = {},
+    onNavigateToUpdateOdo: () -> Unit = {},
+    onNavigateToLogs: () -> Unit = {}
+) {
     var isVehicleMenuExpanded by remember { mutableStateOf(false) }
     var showAddVehicleDialog by remember { mutableStateOf(false) }
     var isFabExpanded by remember { mutableStateOf(false) }
 
-    // Enhanced scroll behavior for 140Hz smoothness
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     Scaffold(
@@ -104,7 +137,7 @@ fun DashboardScreen(
                                 DropdownMenuItem(
                                     text = { Text(vehicle.name) },
                                     onClick = {
-                                        viewModel.selectVehicle(vehicle.id)
+                                        onSelectVehicle(vehicle.id)
                                         isVehicleMenuExpanded = false
                                     },
                                     leadingIcon = {
@@ -143,7 +176,7 @@ fun DashboardScreen(
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 80.dp)
+                modifier = Modifier.padding(bottom = 110.dp) // Increased to clear Floating Navigation Bar
             ) {
                 AnimatedVisibility(
                     visible = isFabExpanded,
@@ -195,7 +228,7 @@ fun DashboardScreen(
         AddVehicleDialog(
             onDismiss = { showAddVehicleDialog = false },
             onConfirm = { name, type, fuelUnit, distanceUnit, currency ->
-                viewModel.addVehicle(name, type, fuelUnit, distanceUnit, currency)
+                onAddVehicle(name, type, fuelUnit, distanceUnit, currency)
                 showAddVehicleDialog = false
             }
         )
@@ -208,7 +241,8 @@ private fun EmptyVehiclesState(paddingValues: PaddingValues, onAddClick: () -> U
         modifier = Modifier
             .fillMaxSize()
             .padding(paddingValues)
-            .padding(24.dp),
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 100.dp), // Clear bottom nav
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -264,7 +298,6 @@ fun DashboardContent(
     val vehicle = uiState.selectedVehicle ?: return
     val metrics = uiState.metrics
 
-    // Remember expensive formatting strings
     val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     val chartDateFormatter = remember { SimpleDateFormat("dd MMM", Locale.getDefault()) }
     val efficiencyFormat = remember { "%.1f" }
@@ -276,7 +309,7 @@ fun DashboardContent(
             start = 16.dp,
             end = 16.dp,
             top = paddingValues.calculateTopPadding() + 16.dp,
-            bottom = paddingValues.calculateBottomPadding() + 110.dp
+            bottom = paddingValues.calculateBottomPadding() + 140.dp // Added space for FAB + Nav
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -289,7 +322,7 @@ fun DashboardContent(
                     title = "Fuel Cost (30d)",
                     value = "${vehicle.currency} ${costFormat.format(metrics?.fuelCostLast30Days ?: 0.0)}",
                     icon = Icons.Default.ShoppingCart,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(2.0f) // Significantly more weight to avoid truncation
                 )
                 MetricCard(
                     title = "Avg Efficiency",
@@ -297,13 +330,13 @@ fun DashboardContent(
                         "${efficiencyFormat.format(metrics?.averageEfficiency)} ${vehicle.distanceUnit}/${if(vehicle.fuelUnit == "Liters") "L" else "gal"}"
                     } else "N/A",
                     icon = Icons.Default.Speed,
-                    modifier = Modifier.weight(1.2f)
+                    modifier = Modifier.weight(1.5f)
                 )
                 MetricCard(
-                    title = "Fill-ups (30d)",
+                    title = "Fill-ups",
                     value = "${metrics?.fillUpCountLast30Days ?: 0}",
                     icon = Icons.Default.DateRange,
-                    modifier = Modifier.weight(0.9f)
+                    modifier = Modifier.weight(1.0f)
                 )
             }
         }
@@ -403,8 +436,21 @@ fun MetricCard(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            Text(text = title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(text = value, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = title, 
+                style = MaterialTheme.typography.labelSmall, 
+                color = MaterialTheme.colorScheme.onSurfaceVariant, 
+                maxLines = 1,
+                overflow = TextOverflow.Clip // Prevent ellipsis in title
+            )
+            Text(
+                text = value, 
+                fontWeight = FontWeight.Bold, 
+                style = MaterialTheme.typography.titleMedium, // Standardized font size
+                color = MaterialTheme.colorScheme.onSurface,
+                softWrap = true, // Allow wrapping to next line if too long
+                overflow = TextOverflow.Visible // Never show ellipsis
+            )
         }
     }
 }
@@ -461,7 +507,6 @@ fun BezierChart(
                     })
                 }
                 .drawWithCache {
-                    // Pre-calculate coordinates to avoid allocations during actual draw
                     val coords = points.mapIndexed { index, point ->
                         val x = if (points.size > 1) (index.toFloat() / (points.size - 1)) * size.width else size.width / 2
                         val y = size.height - (((point.value.toFloat() - paddedMinY) / paddedRangeY) * size.height)
@@ -593,6 +638,58 @@ fun AddVehicleDialog(onDismiss: () -> Unit, onConfirm: (name: String, type: Stri
                     Button(onClick = { if (name.isNotBlank()) onConfirm(name, type, fuelUnit, distanceUnit, currency) }, enabled = name.isNotBlank()) { Text("Save") }
                 }
             }
+        }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun DashboardPreview() {
+    val mockVehicle = VehicleEntity(
+        id = 1,
+        name = "Tesla Model 3",
+        type = "Car",
+        fuelUnit = "Liters",
+        distanceUnit = "km",
+        currency = "USD"
+    )
+    val mockUiState = DashboardUiState(
+        vehicles = listOf(mockVehicle),
+        selectedVehicle = mockVehicle,
+        recentLogs = listOf(
+            LogItem.Fuel(1, 1, System.currentTimeMillis(), 12000.0, 40.0, 1.5, 60.0, false, "Shell", "Nice day", null),
+            LogItem.Service(2, 1, System.currentTimeMillis() - 86400000, 11500.0, "Oil Change", 100.0, "Mobil 1")
+        ),
+        chartPoints = listOf(
+            ChartPoint(System.currentTimeMillis() - 500000000, 15.0),
+            ChartPoint(System.currentTimeMillis() - 400000000, 18.0),
+            ChartPoint(System.currentTimeMillis() - 300000000, 14.0),
+            ChartPoint(System.currentTimeMillis() - 200000000, 19.0)
+        ),
+        isLoading = false
+    )
+    OdoTheme {
+        DashboardScreenContent(uiState = mockUiState)
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun MetricCardPreview() {
+    OdoTheme {
+        Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Fuel Cost",
+                value = "$ 120.00",
+                icon = Icons.Default.ShoppingCart,
+                modifier = Modifier.weight(1f)
+            )
+            MetricCard(
+                title = "Efficiency",
+                value = "15.5 km/L",
+                icon = Icons.Default.Speed,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

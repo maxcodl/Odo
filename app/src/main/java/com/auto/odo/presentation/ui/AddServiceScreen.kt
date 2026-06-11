@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.presentation.viewmodel.AddServiceViewModel
 import java.text.SimpleDateFormat
@@ -27,15 +28,11 @@ import java.util.*
 @Composable
 fun AddServiceScreen(
     viewModel: AddServiceViewModel,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val scrollState = rememberScrollState()
-
-    var showDatePicker by remember { mutableStateOf(false) }
-    var showDropdownMenu by remember { mutableStateOf(false) }
-
-    val serviceTypes = listOf("Oil Change", "Tyres", "Battery", "Brakes", "Filters", "Other")
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -43,7 +40,45 @@ fun AddServiceScreen(
         }
     }
 
+    AddServiceScreenContent(
+        uiState = uiState,
+        autoHideTitleBar = autoHideTitleBar,
+        fullScreenStatusBar = fullScreenStatusBar,
+        onNavigateBack = onNavigateBack,
+        onOdometerChanged = viewModel::onOdometerChanged,
+        onServiceTypeChanged = viewModel::onServiceTypeChanged,
+        onTotalCostChanged = viewModel::onTotalCostChanged,
+        onNotesChanged = viewModel::onNotesChanged,
+        onDateChanged = viewModel::onDateChanged,
+        onSaveClick = viewModel::saveService
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddServiceScreenContent(
+    uiState: com.auto.odo.presentation.viewmodel.AddServiceUiState, // Double check your package name for state class
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
+    onNavigateBack: () -> Unit = {},
+    onOdometerChanged: (String) -> Unit = {},
+    onServiceTypeChanged: (String) -> Unit = {},
+    onTotalCostChanged: (String) -> Unit = {},
+    onNotesChanged: (String) -> Unit = {},
+    onDateChanged: (Long) -> Unit = {},
+    onSaveClick: () -> Unit = {}
+) {
+    val scrollState = rememberScrollState()
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
+
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showDropdownMenu by remember { mutableStateOf(false) }
+
+    val serviceTypes = listOf("Oil Change", "Tyres", "Battery", "Brakes", "Filters", "Other")
+
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
                 title = { Text("Log Service", fontWeight = FontWeight.Bold) },
@@ -52,8 +87,10 @@ fun AddServiceScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -99,7 +136,7 @@ fun AddServiceScreen(
             }
 
             // 2. Date Picker
-            val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+            val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
                 value = sdf.format(Date(uiState.date)),
                 onValueChange = {},
@@ -116,7 +153,7 @@ fun AddServiceScreen(
             // 3. Odometer Input
             OutlinedTextField(
                 value = uiState.odometer,
-                onValueChange = { viewModel.onOdometerChanged(it) },
+                onValueChange = onOdometerChanged,
                 label = { Text("Odometer Reading (${vehicle.distanceUnit})") },
                 placeholder = { Text("Last known: ${uiState.lastKnownOdometer}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -155,7 +192,7 @@ fun AddServiceScreen(
                         DropdownMenuItem(
                             text = { Text(type) },
                             onClick = {
-                                viewModel.onServiceTypeChanged(type)
+                                onServiceTypeChanged(type)
                                 showDropdownMenu = false
                             }
                         )
@@ -166,7 +203,7 @@ fun AddServiceScreen(
             // 5. Total Cost
             OutlinedTextField(
                 value = uiState.totalCost,
-                onValueChange = { viewModel.onTotalCostChanged(it) },
+                onValueChange = onTotalCostChanged,
                 label = { Text("Total Cost (${vehicle.currency})") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
@@ -175,7 +212,7 @@ fun AddServiceScreen(
             // 6. Notes
             OutlinedTextField(
                 value = uiState.notes,
-                onValueChange = { viewModel.onNotesChanged(it) },
+                onValueChange = onNotesChanged,
                 label = { Text("Notes (Optional)") },
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
@@ -185,7 +222,7 @@ fun AddServiceScreen(
 
             // Save Button
             Button(
-                onClick = { viewModel.saveService() },
+                onClick = onSaveClick,
                 enabled = !uiState.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -200,7 +237,6 @@ fun AddServiceScreen(
         }
     }
 
-    // Material 3 DatePickerDialog
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = uiState.date)
         DatePickerDialog(
@@ -208,7 +244,7 @@ fun AddServiceScreen(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        viewModel.onDateChanged(it)
+                        onDateChanged(it)
                     }
                     showDatePicker = false
                 }) {
@@ -223,5 +259,35 @@ fun AddServiceScreen(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AddServicePreview() {
+    val mockVehicle = com.auto.odo.data.entity.VehicleEntity(
+        id = 1,
+        name = "Yamaha R15",
+        type = "Bike",
+        fuelUnit = "Liters",
+        distanceUnit = "km",
+        currency = "INR"
+    )
+
+    val mockUiState = com.auto.odo.presentation.viewmodel.AddServiceUiState(
+        selectedVehicle = mockVehicle,
+        date = System.currentTimeMillis(),
+        odometer = "14200",
+        lastKnownOdometer = "12500",
+        serviceType = "Oil Change",
+        totalCost = "1250",
+        notes = "Engine oil and filter element replacement.",
+        isSaving = false,
+        odometerError = null,
+        saveSuccess = false
+    )
+
+    OdoTheme {
+        AddServiceScreenContent(uiState = mockUiState)
     }
 }

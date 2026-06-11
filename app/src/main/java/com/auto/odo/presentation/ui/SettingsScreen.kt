@@ -30,9 +30,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.core.NavBarStyle
+import com.auto.odo.core.AppThemeMode
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.presentation.viewmodel.SUPPORTED_CURRENCIES
 import com.auto.odo.presentation.viewmodel.SettingsViewModel
@@ -48,11 +50,13 @@ private fun persistTreeUriPermission(context: android.content.Context, uri: Uri,
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     // SAF launchers
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -119,14 +123,17 @@ fun SettingsScreen(
     }
 
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -160,12 +167,14 @@ fun SettingsScreen(
                 navBarStyle = uiState.navBarStyle,
                 fullScreenStatusBar = uiState.fullScreenStatusBar,
                 autoHideTitleBar = uiState.autoHideTitleBar,
+                appThemeMode = uiState.appThemeMode,
                 onChangeCurrency = {
                     uiState.activeVehicle?.let { viewModel.openCurrencyEdit(it) }
                 },
                 onNavBarStyleChange = { viewModel.setNavBarStyle(it) },
                 onFullScreenStatusBarChange = { viewModel.setFullScreenStatusBar(it) },
-                onAutoHideTitleBarChange = { viewModel.setAutoHideTitleBar(it) }
+                onAutoHideTitleBarChange = { viewModel.setAutoHideTitleBar(it) },
+                onAppThemeModeChange = { viewModel.setAppThemeMode(it) }
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -173,33 +182,37 @@ fun SettingsScreen(
             // ── Data Management ───────────────────────────────────────────────
             SectionLabel("Data Management")
 
-            DataActionCard(
-                icon = Icons.Default.FileDownload,
-                iconTint = MaterialTheme.colorScheme.tertiary,
-                title = "Import Data",
-                subtitle = "Load data from CSV backup files\n(Vehicles, Fuel Log, Services, Trips)",
-                actionLabel = if (uiState.isImporting) "Importing…" else "Select Folder & Import",
-                isLoading = uiState.isImporting,
-                accentColor = MaterialTheme.colorScheme.tertiary,
-                onActionClick = { importLauncher.launch(null) },
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column {
+                    PreferenceRow(
+                        icon = Icons.Default.FileDownload,
+                        iconColor = MaterialTheme.colorScheme.tertiary,
+                        title = "Import Data",
+                        subtitle = if (uiState.isImporting) "Importing records..." else "Restore vehicles, fuel, service, expense, and trips",
+                        onClick = { if (!uiState.isImporting) importLauncher.launch(null) }
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    PreferenceRow(
+                        icon = Icons.Default.FileUpload,
+                        iconColor = MaterialTheme.colorScheme.secondary,
+                        title = "Export Data",
+                        subtitle = if (uiState.isExporting) "Exporting records..." else "Backup all records to legacy CSV format",
+                        onClick = { if (!uiState.isExporting) exportLauncher.launch(null) }
+                    )
+                }
+            }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            DataActionCard(
-                icon = Icons.Default.FileUpload,
-                iconTint = MaterialTheme.colorScheme.secondary,
-                title = "Export Data",
-                subtitle = "Save all data as CSV backup files\n(Vehicles, Fuel Log, Services, Trips)",
-                actionLabel = if (uiState.isExporting) "Exporting…" else "Select Folder & Export",
-                isLoading = uiState.isExporting,
-                accentColor = MaterialTheme.colorScheme.secondary,
-                onActionClick = { exportLauncher.launch(null) },
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-
-            Spacer(modifier = Modifier.height(110.dp)) // Padding for floating nav bar
+            Spacer(modifier = Modifier.height(120.dp)) // Padding for floating nav bar
         }
     }
 }
@@ -210,9 +223,9 @@ private fun SectionLabel(text: String) {
         text = text.uppercase(),
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary,
-        letterSpacing = androidx.compose.ui.unit.TextUnit(1.5f, androidx.compose.ui.unit.TextUnitType.Sp),
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp),
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 8.dp)
     )
 }
 
@@ -398,10 +411,12 @@ private fun PreferencesSection(
     navBarStyle: NavBarStyle,
     fullScreenStatusBar: Boolean,
     autoHideTitleBar: Boolean,
+    appThemeMode: AppThemeMode,
     onChangeCurrency: () -> Unit,
     onNavBarStyleChange: (NavBarStyle) -> Unit,
     onFullScreenStatusBarChange: (Boolean) -> Unit,
-    onAutoHideTitleBarChange: (Boolean) -> Unit
+    onAutoHideTitleBarChange: (Boolean) -> Unit,
+    onAppThemeModeChange: (AppThemeMode) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -461,12 +476,58 @@ private fun PreferencesSection(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
 
+            // App Theme Mode
+            var showThemeMenu by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.fillMaxWidth()) {
+                PreferenceRow(
+                    icon = Icons.Default.Palette,
+                    iconColor = MaterialTheme.colorScheme.primary,
+                    title = "App Theme",
+                    subtitle = when (appThemeMode) {
+                        AppThemeMode.STANDARD -> "Standard (Indigo/Teal)"
+                        AppThemeMode.AMOLED -> "AMOLED (Standard + Dark Black)"
+                        AppThemeMode.MONET -> "Monet (Dynamic Colors)"
+                        AppThemeMode.MONET_AMOLED -> "Monet + AMOLED (Dynamic + Dark Black)"
+                    },
+                    onClick = { showThemeMenu = true }
+                )
+
+                DropdownMenu(
+                    expanded = showThemeMenu,
+                    onDismissRequest = { showThemeMenu = false }
+                ) {
+                    AppThemeMode.values().forEach { mode ->
+                        val modeLabel = when (mode) {
+                            AppThemeMode.STANDARD -> "Standard (Indigo/Teal)"
+                            AppThemeMode.AMOLED -> "AMOLED (Standard + Dark Black)"
+                            AppThemeMode.MONET -> "Monet (Dynamic Colors)"
+                            AppThemeMode.MONET_AMOLED -> "Monet + AMOLED (Dynamic + Dark Black)"
+                        }
+                        DropdownMenuItem(
+                            text = { Text(modeLabel) },
+                            onClick = {
+                                onAppThemeModeChange(mode)
+                                showThemeMenu = false
+                            },
+                            trailingIcon = if (mode == appThemeMode) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null
+                        )
+                    }
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+            )
+
             // Full Screen Status Bar
             PreferenceSwitchRow(
                 icon = Icons.Default.Fullscreen,
                 iconColor = MaterialTheme.colorScheme.tertiary,
-                title = "Immersive Status Bar",
-                subtitle = "Hide status bar for a cleaner look",
+                title = "Edge-to-Edge Layout",
+                subtitle = "Draw content behind the status bar",
                 checked = fullScreenStatusBar,
                 onCheckedChange = onFullScreenStatusBarChange
             )

@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.presentation.viewmodel.UpdateOdometerViewModel
 import java.text.SimpleDateFormat
@@ -24,10 +25,13 @@ import java.util.*
 @Composable
 fun UpdateOdometerScreen(
     viewModel: UpdateOdometerViewModel,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     var showDatePicker by remember { mutableStateOf(false) }
 
@@ -38,6 +42,8 @@ fun UpdateOdometerScreen(
     }
 
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
                 title = { Text("Update Odometer", fontWeight = FontWeight.Bold) },
@@ -46,8 +52,10 @@ fun UpdateOdometerScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -93,7 +101,7 @@ fun UpdateOdometerScreen(
             }
 
             // 2. Date Picker
-            val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+            val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
                 value = sdf.format(Date(uiState.date)),
                 onValueChange = {},

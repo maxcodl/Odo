@@ -13,12 +13,17 @@ enum class NavBarStyle {
     SOLID, BLURRY, GLASSY
 }
 
+enum class AppThemeMode {
+    STANDARD, AMOLED, MONET, MONET_AMOLED
+}
+
 class UserSessionManager(private val context: Context) {
     companion object {
         private val CURRENT_VEHICLE_ID = longPreferencesKey("current_vehicle_id")
         private val NAV_BAR_STYLE = stringPreferencesKey("nav_bar_style")
         private val FULL_SCREEN_STATUS_BAR = booleanPreferencesKey("full_screen_status_bar")
         private val AUTO_HIDE_TITLE_BAR = booleanPreferencesKey("auto_hide_title_bar")
+        private val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
     }
 
     val currentVehicleId: Flow<Long?> = context.dataStore.data.map { preferences ->
@@ -36,6 +41,11 @@ class UserSessionManager(private val context: Context) {
 
     val autoHideTitleBar: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[AUTO_HIDE_TITLE_BAR] ?: true
+    }
+
+    val appThemeMode: Flow<AppThemeMode> = context.dataStore.data.map { preferences ->
+        val modeStr = preferences[APP_THEME_MODE] ?: AppThemeMode.STANDARD.name
+        try { AppThemeMode.valueOf(modeStr) } catch (e: Exception) { AppThemeMode.STANDARD }
     }
 
     suspend fun setCurrentVehicleId(vehicleId: Long) {
@@ -59,6 +69,12 @@ class UserSessionManager(private val context: Context) {
     suspend fun setAutoHideTitleBar(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[AUTO_HIDE_TITLE_BAR] = enabled
+        }
+    }
+
+    suspend fun setAppThemeMode(mode: AppThemeMode) {
+        context.dataStore.edit { preferences ->
+            preferences[APP_THEME_MODE] = mode.name
         }
     }
 }

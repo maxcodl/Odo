@@ -6,8 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,12 +18,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -34,6 +36,7 @@ import com.auto.odo.core.NavBarStyle
 import com.auto.odo.presentation.theme.OdoTheme
 import com.auto.odo.presentation.ui.*
 import com.auto.odo.presentation.viewmodel.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
@@ -55,22 +58,18 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val mainViewModel: MainViewModel = hiltViewModel()
-            val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
             
-            // Modern immersive mode handling
+            // Ensure status bar is always visible and transparent
             val view = LocalView.current
-            LaunchedEffect(fullScreenStatusBar) {
+            LaunchedEffect(Unit) {
                 val window = (view.context as Activity).window
                 val controller = WindowCompat.getInsetsController(window, view)
-                if (fullScreenStatusBar) {
-                    controller.hide(WindowInsetsCompat.Type.statusBars())
-                    controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                } else {
-                    controller.show(WindowInsetsCompat.Type.statusBars())
-                }
+                controller.show(WindowInsetsCompat.Type.statusBars())
             }
 
-            OdoTheme {
+            val appThemeMode by mainViewModel.appThemeMode.collectAsStateWithLifecycle()
+
+            OdoTheme(themeMode = appThemeMode) {
                 MainAppScreen(mainViewModel)
             }
         }
@@ -82,33 +81,35 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val context = LocalContext.current
+    val activity = context as ComponentActivity
 
     val navBarStyle by mainViewModel.navBarStyle.collectAsStateWithLifecycle()
-    val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
-    val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
 
-    val bottomNavigationItems = listOf(
-        Screen.Dashboard,
-        Screen.Logs,
-        Screen.Analytics,
-        Screen.Settings
-    )
-
-    val isFormRoute = currentRoute == Screen.AddFillUp.route ||
-            currentRoute == Screen.AddService.route ||
-            currentRoute == Screen.AddExpense.route ||
-            currentRoute == Screen.AddTrip.route ||
-            currentRoute == Screen.UpdateOdometer.route
+    val isFormRoute = remember(currentRoute) {
+        currentRoute == Screen.AddFillUp.route ||
+        currentRoute == Screen.AddService.route ||
+        currentRoute == Screen.AddExpense.route ||
+        currentRoute == Screen.AddTrip.route ||
+        currentRoute == Screen.UpdateOdometer.route
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
             startDestination = Screen.Dashboard.route,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = { EnterTransition.None },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { ExitTransition.None }
         ) {
             composable(Screen.Dashboard.route) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                // Scoping ViewModels to Activity makes tab switching instant as data is preserved
                 DashboardScreen(
-                    viewModel = hiltViewModel(),
+                    viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar,
                     onNavigateToAddFillUp = { navController.navigate(Screen.AddFillUp.route) },
@@ -121,29 +122,109 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             }
 
             composable(Screen.Logs.route) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
                 LogsFeedScreen(
-                    viewModel = hiltViewModel(),
+                    viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar
                 )
             }
 
             composable(Screen.Analytics.route) {
-                AnalyticsMockScreen(fullScreenStatusBar)
+                AnalyticsMockScreen()
             }
 
             composable(Screen.Settings.route) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
                 SettingsScreen(
-                    viewModel = hiltViewModel(),
+                    viewModel = hiltViewModel(activity),
+                    autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar
                 )
             }
 
-            composable(Screen.AddFillUp.route) { AddFillUpScreen(hiltViewModel(), { navController.popBackStack() }) }
-            composable(Screen.AddService.route) { AddServiceScreen(hiltViewModel(), { navController.popBackStack() }) }
-            composable(Screen.AddExpense.route) { AddExpenseScreen(hiltViewModel(), { navController.popBackStack() }) }
-            composable(Screen.AddTrip.route) { AddTripScreen(hiltViewModel(), { navController.popBackStack() }) }
-            composable(Screen.UpdateOdometer.route) { UpdateOdometerScreen(hiltViewModel(), { navController.popBackStack() }) }
+            composable(
+                route = Screen.AddFillUp.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AddFillUpScreen(
+                    viewModel = hiltViewModel(),
+                    autoHideTitleBar = autoHideTitleBar,
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.AddService.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AddServiceScreen(
+                    viewModel = hiltViewModel(),
+                    autoHideTitleBar = autoHideTitleBar,
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.AddExpense.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AddExpenseScreen(
+                    viewModel = hiltViewModel(),
+                    autoHideTitleBar = autoHideTitleBar,
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.AddTrip.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AddTripScreen(
+                    viewModel = hiltViewModel(),
+                    autoHideTitleBar = autoHideTitleBar,
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.UpdateOdometer.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                UpdateOdometerScreen(
+                    viewModel = hiltViewModel(),
+                    autoHideTitleBar = autoHideTitleBar,
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
 
         // Global Floating Navigation Bar overlay
@@ -152,16 +233,17 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp),
-                items = bottomNavigationItems,
                 currentRoute = currentRoute,
                 style = navBarStyle,
                 onNavigate = { screen ->
-                    navController.navigate(screen.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                    if (currentRoute != screen.route) {
+                        navController.navigate(screen.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 }
             )
@@ -172,16 +254,22 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
 @Composable
 fun FloatingNavigationBar(
     modifier: Modifier = Modifier,
-    items: List<Screen>,
     currentRoute: String?,
     style: NavBarStyle,
     onNavigate: (Screen) -> Unit
 ) {
+    val isDark = isSystemInDarkTheme()
     val backgroundColor = when (style) {
         NavBarStyle.SOLID -> MaterialTheme.colorScheme.surface
         NavBarStyle.BLURRY -> MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-        NavBarStyle.GLASSY -> Color.White.copy(alpha = 0.4f)
+        NavBarStyle.GLASSY -> if (isDark) Color.Black.copy(alpha = 0.45f) else Color.White.copy(alpha = 0.45f)
     }
+    val borderStroke = when (style) {
+        NavBarStyle.GLASSY -> if (isDark) BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f)) else BorderStroke(0.5.dp, Color.Black.copy(alpha = 0.12f))
+        else -> null
+    }
+
+    val items = remember { listOf(Screen.Dashboard, Screen.Logs, Screen.Analytics, Screen.Settings) }
 
     Box(
         modifier = modifier
@@ -196,7 +284,7 @@ fun FloatingNavigationBar(
             shape = RoundedCornerShape(26.dp),
             color = backgroundColor,
             tonalElevation = if (style == NavBarStyle.SOLID) 8.dp else 2.dp,
-            border = if (style == NavBarStyle.GLASSY) BorderStroke(0.5.dp, Color.White.copy(alpha = 0.3f)) else null
+            border = borderStroke
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
@@ -204,32 +292,51 @@ fun FloatingNavigationBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 items.forEach { screen ->
-                    val isSelected = currentRoute == screen.route
-                    val tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    
-                    IconButton(
-                        onClick = { onNavigate(screen) },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Icon(
-                                imageVector = screen.icon!!,
-                                contentDescription = screen.title,
-                                tint = tint,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            AnimatedVisibility(
-                                visible = isSelected,
-                                enter = fadeIn() + expandVertically(),
-                                exit = fadeOut() + shrinkVertically()
+                    key(screen.route) {
+                        val isSelected = currentRoute == screen.route
+
+                        val iconScale by animateFloatAsState(
+                            targetValue = if (isSelected) 1.15f else 1f,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "navIconScale_${screen.route}"
+                        )
+                        val selectedColor = MaterialTheme.colorScheme.primary
+                        val unselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        val iconTint by animateColorAsState(
+                            targetValue = if (isSelected) selectedColor else unselectedColor,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "navIconTint_${screen.route}"
+                        )
+
+                        IconButton(
+                            onClick = { onNavigate(screen) },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
                             ) {
-                                Text(
-                                    text = screen.title,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = tint,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 2.dp)
+                                Icon(
+                                    imageVector = screen.icon ?: Icons.Default.Home,
+                                    contentDescription = screen.title,
+                                    tint = iconTint,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .graphicsLayer(scaleX = iconScale, scaleY = iconScale)
                                 )
+                                AnimatedVisibility(
+                                    visible = isSelected,
+                                    enter = fadeIn() + expandVertically(),
+                                    exit = fadeOut() + shrinkVertically()
+                                ) {
+                                    Text(
+                                        text = screen.title,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = selectedColor,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -239,35 +346,14 @@ fun FloatingNavigationBar(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnalyticsMockScreen(fullScreenStatusBar: Boolean) {
-    Scaffold(
-        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = Icons.Default.Speed,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(72.dp)
-            )
+fun AnalyticsMockScreen() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Timeline, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Analytics Hub", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "In-depth analytics, fuel cost projections and efficiency predictions will appear here.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
+            Text("Analytics Coming Soon", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("Deep insights into your vehicle's performance.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

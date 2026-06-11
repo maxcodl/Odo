@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.viewmodel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class AddFillUpUiState(
     val selectedVehicle: VehicleEntity? = null,
     val date: Long = System.currentTimeMillis(),
@@ -45,24 +47,25 @@ class AddFillUpViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            sessionManager.currentVehicleId.collectLatest { vehicleId ->
-                if (vehicleId != null) {
-                    val vehicle = vehicleRepo.getVehicleById(vehicleId)
-                    val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                    // lastOdo is stored in km — convert to vehicle's display unit for UI
-                    val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
-                    val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
-                        UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
-                    _uiState.update {
-                        it.copy(
-                            selectedVehicle = vehicle,
-                            lastKnownOdometer = lastOdoDisplay,
-                            odometer = if (lastOdoDisplay > 0)
-                                String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
-                        )
+            sessionManager.currentVehicleId
+                .distinctUntilChanged()
+                .collectLatest { vehicleId ->
+                    if (vehicleId != null) {
+                        val vehicle = vehicleRepo.getVehicleById(vehicleId)
+                        val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+                        val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                        val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
+                            UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
+                        _uiState.update {
+                            it.copy(
+                                selectedVehicle = vehicle,
+                                lastKnownOdometer = lastOdoDisplay,
+                                odometer = if (lastOdoDisplay > 0)
+                                    String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
+                            )
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -139,7 +142,6 @@ class AddFillUpViewModel @Inject constructor(
     private fun validateOdometerChronologically() {
         val vehicle = _uiState.value.selectedVehicle ?: return
         val odoDisplayVal = _uiState.value.odometer.replace(',', '.').toDoubleOrNull() ?: return
-        // Convert display unit → km before comparing against km-stored logs
         val odoKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoDisplayVal) else odoDisplayVal
         viewModelScope.launch {
             val result = validateOdometer(vehicle.id, _uiState.value.date, odoKm)
@@ -147,7 +149,6 @@ class AddFillUpViewModel @Inject constructor(
                 when (result) {
                     is OdoValidationResult.Valid -> it.copy(odometerError = null)
                     is OdoValidationResult.InvalidBefore -> {
-                        // Convert limit from km back to display unit for error message
                         val limitDisplay = if (vehicle.distanceUnit == "miles")
                             UnitConverter.kmToMiles(result.limit) else result.limit
                         it.copy(odometerError = "Reading is lower than a previous log (%.1f ${vehicle.distanceUnit})"
@@ -185,7 +186,6 @@ class AddFillUpViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
 
-            // Convert display unit → km before validation (DB stores km)
             val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
             val validation = validateOdometer(vehicle.id, state.date, standardOdo)
             if (validation !is OdoValidationResult.Valid) {

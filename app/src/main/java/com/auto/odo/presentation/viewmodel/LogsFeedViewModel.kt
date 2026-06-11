@@ -7,6 +7,7 @@ import com.auto.odo.data.entity.*
 import com.auto.odo.domain.repository.*
 import com.auto.odo.domain.usecase.GetLogsFeedUseCase
 import com.auto.odo.domain.usecase.LogItem
+import androidx.compose.runtime.Immutable
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -14,12 +15,12 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class LogsFeedUiState(
     val selectedVehicle: VehicleEntity? = null,
     val logs: List<LogItem> = emptyList(),
     val activeFilter: String? = null,
     val isLoading: Boolean = true,
-    /** Non-null while the undo window is open for a recently swiped log. */
     val pendingDeleteLog: LogItem? = null
 )
 
@@ -39,30 +40,43 @@ class LogsFeedViewModel @Inject constructor(
     val uiState: StateFlow<LogsFeedUiState> = _uiState.asStateFlow()
 
     private val _filter = MutableStateFlow<String?>(null)
-
-    /** Tracks the coroutine running the 4-second undo countdown. */
     private var undoJob: Job? = null
+    private val _pendingDeleteLog = MutableStateFlow<LogItem?>(null)
 
     init {
         viewModelScope.launch {
-            sessionManager.currentVehicleId.flatMapLatest { vehicleId ->
-                if (vehicleId == null) {
-                    flowOf(Pair(null, emptyList<LogItem>()))
+            // FIX: Previously this called getAllVehicles() and then scanned the whole list
+            // every time any vehicle changed. Now it uses getVehicleByIdFlow() which is a
+            // targeted query that only fires when THIS vehicle's data changes.
+            val activeVehicleFlow = sessionManager.currentVehicleId.flatMapLatest { vehicleId ->
+                if (vehicleId == null) flowOf(null)
+                else vehicleRepo.getVehicleByIdFlow(vehicleId)
+            }.distinctUntilChanged()
+
+            activeVehicleFlow.flatMapLatest { vehicle ->
+                if (vehicle == null) {
+                    flowOf(LogsFeedUiState(isLoading = false))
                 } else {
-                    val vehicle = vehicleRepo.getVehicleById(vehicleId)
                     _filter.flatMapLatest { filterType ->
-                        getLogsFeed(vehicleId, filterType).map { logs -> Pair(vehicle, logs) }
+                        combine(
+                            getLogsFeed(vehicle.id, filterType),
+                            _pendingDeleteLog
+                        ) { logs, pending ->
+                            val visibleLogs = logs.filter { log ->
+                                pending == null || log.id != pending.id || log.javaClass.simpleName != pending.javaClass.simpleName
+                            }
+                            LogsFeedUiState(
+                                selectedVehicle = vehicle,
+                                logs = visibleLogs,
+                                activeFilter = filterType,
+                                pendingDeleteLog = pending,
+                                isLoading = false
+                            )
+                        }
                     }
                 }
-            }.collect { (vehicle, logs) ->
-                _uiState.update {
-                    it.copy(
-                        selectedVehicle = vehicle,
-                        logs = logs,
-                        activeFilter = _filter.value,
-                        isLoading = false
-                    )
-                }
+            }.collect { newState ->
+                _uiState.value = newState
             }
         }
     }
@@ -71,40 +85,27 @@ class LogsFeedViewModel @Inject constructor(
         _filter.value = filter
     }
 
-    // ── Delete with undo ─────────────────────────────────────────────────────
-
-    /**
-     * Called when the user swipes a log. Stores it as [pendingDeleteLog]
-     * and starts a 4-second countdown. If the user doesn't tap Undo before
-     * the countdown finishes, the item is permanently deleted.
-     */
     fun deleteLog(log: LogItem) {
-        // Cancel any previous pending-delete countdown first
         undoJob?.cancel()
-        // If there was already a pending delete (user swiped a second item),
-        // commit the previous one immediately before accepting the new one.
         val existing = _uiState.value.pendingDeleteLog
         if (existing != null && existing.id != log.id) {
             viewModelScope.launch { commitDelete(existing) }
         }
 
-        _uiState.update { it.copy(pendingDeleteLog = log) }
+        _pendingDeleteLog.value = log
 
         undoJob = viewModelScope.launch {
-            delay(4_000L) // 4-second undo window
-            _uiState.update { it.copy(pendingDeleteLog = null) }
+            delay(4_000L)
+            _pendingDeleteLog.value = null
             commitDelete(log)
         }
     }
 
-    /** User tapped Undo — cancel the countdown and restore the item to the list. */
     fun undoDelete() {
         undoJob?.cancel()
         undoJob = null
-        _uiState.update { it.copy(pendingDeleteLog = null) }
+        _pendingDeleteLog.value = null
     }
-
-    // ── Internal ─────────────────────────────────────────────────────────────
 
     private suspend fun commitDelete(log: LogItem) {
         when (log) {

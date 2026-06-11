@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -27,12 +28,16 @@ import java.util.*
 @Composable
 fun AddTripScreen(
     viewModel: AddTripViewModel,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     AddTripContent(
         uiState = uiState,
+        autoHideTitleBar = autoHideTitleBar,
+        fullScreenStatusBar = fullScreenStatusBar,
         onNavigateBack = onNavigateBack,
         onDateChanged = viewModel::onDateChanged,
         onStartOdoChanged = viewModel::onStartOdoChanged,
@@ -47,6 +52,8 @@ fun AddTripScreen(
 @Composable
 fun AddTripContent(
     uiState: AddTripUiState,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit,
     onDateChanged: (Long) -> Unit,
     onStartOdoChanged: (String) -> Unit,
@@ -56,6 +63,7 @@ fun AddTripContent(
     onSaveTrip: () -> Unit
 ) {
     val scrollState = rememberScrollState()
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     var showDatePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.saveSuccess) {
@@ -65,6 +73,8 @@ fun AddTripContent(
     }
 
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
                 title = { Text("Log Trip", fontWeight = FontWeight.Bold) },
@@ -73,8 +83,10 @@ fun AddTripContent(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -268,6 +280,8 @@ fun AddTripPreview() {
                 endOdo = "1050",
                 distanceDisplay = "50.0"
             ),
+            autoHideTitleBar = false,
+            fullScreenStatusBar = false,
             onNavigateBack = {},
             onDateChanged = {},
             onStartOdoChanged = {},

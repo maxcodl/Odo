@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.NavBarStyle
+import com.auto.odo.core.AppThemeMode
 import com.auto.odo.core.UserSessionManager
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.repository.VehicleRepository
@@ -64,6 +65,7 @@ data class SettingsUiState(
     val navBarStyle: NavBarStyle = NavBarStyle.SOLID,
     val fullScreenStatusBar: Boolean = false,
     val autoHideTitleBar: Boolean = true,
+    val appThemeMode: AppThemeMode = AppThemeMode.STANDARD,
 
     // Delete confirmation
     val vehiclePendingDelete: VehicleEntity? = null,
@@ -132,6 +134,11 @@ class SettingsViewModel @Inject constructor(
                 _uiState.update { it.copy(autoHideTitleBar = enabled) }
             }
         }
+        viewModelScope.launch {
+            sessionManager.appThemeMode.collect { mode ->
+                _uiState.update { it.copy(appThemeMode = mode) }
+            }
+        }
     }
 
     // ── UI Preferences ──────────────────────────────────────────────────────
@@ -146,6 +153,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setAutoHideTitleBar(enabled: Boolean) {
         viewModelScope.launch { sessionManager.setAutoHideTitleBar(enabled) }
+    }
+
+    fun setAppThemeMode(mode: AppThemeMode) {
+        viewModelScope.launch { sessionManager.setAppThemeMode(mode) }
     }
 
     // ── Add vehicle ──────────────────────────────────────────────────────────

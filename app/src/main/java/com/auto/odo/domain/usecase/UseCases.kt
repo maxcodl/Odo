@@ -1,14 +1,15 @@
 package com.auto.odo.domain.usecase
 
+import androidx.compose.runtime.Immutable
 import com.auto.odo.core.UnitConverter
 import com.auto.odo.data.entity.*
 import com.auto.odo.domain.repository.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 // 1. Unified Log model for the feeds
+@Immutable
 sealed class LogItem {
     abstract val id: Long
     abstract val vehicleId: Long
@@ -16,6 +17,7 @@ sealed class LogItem {
     abstract val totalCost: Double
     abstract val notes: String?
 
+    @Immutable
     data class Fuel(
         override val id: Long,
         override val vehicleId: Long,
@@ -30,6 +32,7 @@ sealed class LogItem {
         val receiptPath: String?
     ) : LogItem()
 
+    @Immutable
     data class Service(
         override val id: Long,
         override val vehicleId: Long,
@@ -40,6 +43,7 @@ sealed class LogItem {
         override val notes: String?
     ) : LogItem()
 
+    @Immutable
     data class Expense(
         override val id: Long,
         override val vehicleId: Long,
@@ -49,6 +53,7 @@ sealed class LogItem {
         override val notes: String?
     ) : LogItem()
 
+    @Immutable
     data class Trip(
         override val id: Long,
         override val vehicleId: Long,
@@ -58,7 +63,7 @@ sealed class LogItem {
         val purpose: String,
         override val notes: String?
     ) : LogItem() {
-        override val totalCost: Double get() = 0.0 // Trips don't have a cost column in schema
+        override val totalCost: Double get() = 0.0
     }
 }
 
@@ -69,29 +74,34 @@ fun ExpenseLogEntity.toLogItem() = LogItem.Expense(id, vehicleId, date, category
 fun TripLogEntity.toLogItem() = LogItem.Trip(id, vehicleId, date, startOdo, endOdo, purpose, notes)
 
 // 2. Metrics Use Case
+@Immutable
 data class DashboardMetrics(
     val fuelCostLast30Days: Double,
     val averageEfficiency: Double,
     val fillUpCountLast30Days: Int
 )
 
+// FIX: vehicleRepo removed — distanceUnit and fuelUnit are now passed in by the ViewModel
+// which already knows the active vehicle. This stops a redundant getAllVehicles() subscription
+// from firing inside the metrics flow every time any fuel log changes.
 class GetRolling30DayMetricsUseCase @Inject constructor(
-    private val fuelRepo: FuelLogRepository,
-    private val vehicleRepo: VehicleRepository
+    private val fuelRepo: FuelLogRepository
 ) {
-    operator fun invoke(vehicleId: Long): Flow<DashboardMetrics> {
+    operator fun invoke(
+        vehicleId: Long,
+        distanceUnit: String,
+        fuelUnit: String
+    ): Flow<DashboardMetrics> {
         val thirtyDaysAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-        
-        val fuelLogsFlow = fuelRepo.getFuelLogsForVehicle(vehicleId)
-        val fuelCostFlow = fuelRepo.getFuelCostSumSince(vehicleId, thirtyDaysAgo)
-        val fillUpCountFlow = fuelRepo.getFillUpCountSince(vehicleId, thirtyDaysAgo)
 
-        return combine(fuelLogsFlow, fuelCostFlow, fillUpCountFlow) { logs, cost, count ->
-            val vehicle = vehicleRepo.getVehicleById(vehicleId)
-            val avgEff = calculateAverageEfficiency(logs, vehicle?.distanceUnit ?: "km", vehicle?.fuelUnit ?: "Liters")
+        return combine(
+            fuelRepo.getFuelLogsForVehicle(vehicleId),
+            fuelRepo.getFuelCostSumSince(vehicleId, thirtyDaysAgo),
+            fuelRepo.getFillUpCountSince(vehicleId, thirtyDaysAgo)
+        ) { logs, cost, count ->
             DashboardMetrics(
                 fuelCostLast30Days = cost ?: 0.0,
-                averageEfficiency = avgEff,
+                averageEfficiency = calculateAverageEfficiency(logs, distanceUnit, fuelUnit),
                 fillUpCountLast30Days = count
             )
         }.flowOn(Dispatchers.Default)
@@ -110,7 +120,6 @@ class GetRolling30DayMetricsUseCase @Inject constructor(
         val totalDistance = lastNonPartial.odometer - firstLog.odometer
         if (totalDistance <= 0 || totalDistance.isNaN() || totalDistance.isInfinite()) return 0.0
 
-        // Sum quantities of fuel consumed after the first log up to the last non-partial fill-up
         var totalFuel = 0.0
         for (i in (firstIndex + 1)..lastIndex) {
             val qty = sortedLogs[i].quantity
@@ -125,7 +134,6 @@ class GetRolling30DayMetricsUseCase @Inject constructor(
         if (rawKmpl.isNaN() || rawKmpl.isInfinite()) return 0.0
 
         val result = if (distUnit == "miles" || volUnit == "Gallons") {
-            // Convert km/L to MPG
             UnitConverter.kmToMiles(rawKmpl) / UnitConverter.litersToGallons(1.0)
         } else {
             rawKmpl

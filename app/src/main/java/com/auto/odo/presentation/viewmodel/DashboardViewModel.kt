@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.viewmodel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
@@ -12,13 +13,16 @@ import com.auto.odo.domain.usecase.GetRecentLogsUseCase
 import com.auto.odo.domain.usecase.GetRolling30DayMetricsUseCase
 import com.auto.odo.domain.usecase.LogItem
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class ChartPoint(val date: Long, val value: Double)
 
+@Immutable
 data class DashboardUiState(
     val vehicles: List<VehicleEntity> = emptyList(),
     val selectedVehicle: VehicleEntity? = null,
@@ -48,42 +52,58 @@ class DashboardViewModel @Inject constructor(
     private fun loadDashboardData() {
         viewModelScope.launch {
             combine(
-                vehicleRepo.getAllVehicles(),
-                sessionManager.currentVehicleId
+                vehicleRepo.getAllVehicles().distinctUntilChanged(),
+                sessionManager.currentVehicleId.distinctUntilChanged()
             ) { vehicles, selectedId ->
                 Pair(vehicles, selectedId)
-            }.collectLatest { (vehicles, selectedId) ->
+            }.flatMapLatest { (vehicles, selectedId) ->
                 if (vehicles.isEmpty()) {
-                    _uiState.update { it.copy(vehicles = emptyList(), selectedVehicle = null, isLoading = false) }
-                    return@collectLatest
-                }
+                    flowOf(DashboardUiState(vehicles = emptyList(), selectedVehicle = null, isLoading = false))
+                } else {
+                    val activeVehicle = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.first()
+                    if (activeVehicle.id != selectedId) {
+                        sessionManager.setCurrentVehicleId(activeVehicle.id)
+                    }
 
-                val activeVehicle = vehicles.firstOrNull { it.id == selectedId } ?: vehicles.first()
-                if (activeVehicle.id != selectedId) {
-                    sessionManager.setCurrentVehicleId(activeVehicle.id)
-                }
+                    // FIX: One single fuel log query shared by both chart and metrics.
+                    val fuelLogsFlow = fuelRepo.getFuelLogsForVehicle(activeVehicle.id)
+                        .distinctUntilChanged()
 
-                _uiState.update { it.copy(vehicles = vehicles, selectedVehicle = activeVehicle, isLoading = true) }
+                    // Optimization: Move chart points calculation to Default dispatcher
+                    val chartPointsFlow = fuelLogsFlow
+                        .map { logs ->
+                            val sorted = logs.sortedBy { it.odometer }
+                            buildChartPoints(sorted, activeVehicle.distanceUnit, activeVehicle.fuelUnit)
+                        }
+                        .flowOn(Dispatchers.Default)
+                        .distinctUntilChanged()
 
-                combine(
-                    getRollingMetrics(activeVehicle.id),
-                    getRecentLogs(activeVehicle.id),
-                    fuelRepo.getFuelLogsForVehicle(activeVehicle.id)
-                ) { metrics, logs, fuelLogs ->
-                    // Sort by odometer for chart calculation (getFuelLogsForVehicle returns by date desc)
-                    val sortedByOdo = fuelLogs.sortedBy { it.odometer }
-                    val chartPoints = buildChartPoints(sortedByOdo, activeVehicle.distanceUnit, activeVehicle.fuelUnit)
-                    Triple(metrics, logs, chartPoints)
-                }.collect { (metrics, logs, chart) ->
-                    _uiState.update {
-                        it.copy(
+                    val metricsFlow = getRollingMetrics(
+                        vehicleId = activeVehicle.id,
+                        distanceUnit = activeVehicle.distanceUnit,
+                        fuelUnit = activeVehicle.fuelUnit
+                    ).distinctUntilChanged()
+
+                    val recentLogsFlow = getRecentLogs(activeVehicle.id)
+                        .distinctUntilChanged()
+
+                    combine(
+                        metricsFlow,
+                        recentLogsFlow,
+                        chartPointsFlow
+                    ) { metrics, logs, chartPoints ->
+                        DashboardUiState(
+                            vehicles = vehicles,
+                            selectedVehicle = activeVehicle,
                             metrics = metrics,
                             recentLogs = logs,
-                            chartPoints = chart,
+                            chartPoints = chartPoints,
                             isLoading = false
                         )
                     }
                 }
+            }.collect { newState ->
+                _uiState.value = newState
             }
         }
     }

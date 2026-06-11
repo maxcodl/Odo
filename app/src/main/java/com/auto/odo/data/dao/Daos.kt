@@ -12,6 +12,10 @@ interface VehicleDao {
     @Query("SELECT * FROM vehicles WHERE id = :id LIMIT 1")
     suspend fun getVehicleById(id: Long): VehicleEntity?
 
+    // NEW: Flow version so we can watch a single vehicle without scanning the whole table
+    @Query("SELECT * FROM vehicles WHERE id = :id LIMIT 1")
+    fun getVehicleByIdFlow(id: Long): Flow<VehicleEntity?>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertVehicle(vehicle: VehicleEntity): Long
 
@@ -54,7 +58,6 @@ interface FuelLogDao {
     @Delete
     suspend fun deleteFuelLog(log: FuelLogEntity)
 
-    // Odometer safeguards: Find closest readings before and after a specific date and odometer
     @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
     suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
 

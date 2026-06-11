@@ -3,6 +3,7 @@ package com.auto.odo.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.NavBarStyle
+import com.auto.odo.core.AppThemeMode
 import com.auto.odo.core.UserSessionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,4 +24,7 @@ class MainViewModel @Inject constructor(
 
     val autoHideTitleBar: StateFlow<Boolean> = sessionManager.autoHideTitleBar
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val appThemeMode: StateFlow<AppThemeMode> = sessionManager.appThemeMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppThemeMode.STANDARD)
 }

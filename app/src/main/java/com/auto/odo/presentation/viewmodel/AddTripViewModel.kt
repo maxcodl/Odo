@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.viewmodel
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+@Immutable
 data class AddTripUiState(
     val selectedVehicle: VehicleEntity? = null,
     val date: Long = System.currentTimeMillis(),
@@ -44,29 +46,31 @@ class AddTripViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            sessionManager.currentVehicleId.collectLatest { vehicleId ->
-                if (vehicleId != null) {
-    val vehicle = vehicleRepo.getVehicleById(vehicleId) ?: return@collectLatest
-    val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-    val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+            sessionManager.currentVehicleId
+                .distinctUntilChanged()
+                .collectLatest { vehicleId ->
+                    if (vehicleId != null) {
+                        val vehicle = vehicleRepo.getVehicleById(vehicleId) ?: return@collectLatest
+                        val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+                        val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
 
-    val lastOdoDisplay =
-        if (vehicle.distanceUnit == "miles")
-            UnitConverter.kmToMiles(lastOdoKm)
-        else
-            lastOdoKm
+                        val lastOdoDisplay =
+                            if (vehicle.distanceUnit == "miles")
+                                UnitConverter.kmToMiles(lastOdoKm)
+                            else
+                                lastOdoKm
 
-    _uiState.update {
-        it.copy(
-            selectedVehicle = vehicle,
-            lastKnownOdometer = lastOdoDisplay,
-            startOdo = if (lastOdoDisplay > 0)
-                String.format(java.util.Locale.US, "%.1f", lastOdoDisplay)
-            else ""
-        )
-    }
-}
-            }
+                        _uiState.update {
+                            it.copy(
+                                selectedVehicle = vehicle,
+                                lastKnownOdometer = lastOdoDisplay,
+                                startOdo = if (lastOdoDisplay > 0)
+                                    String.format(java.util.Locale.US, "%.1f", lastOdoDisplay)
+                                else ""
+                            )
+                        }
+                    }
+                }
         }
     }
 

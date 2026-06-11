@@ -105,7 +105,8 @@ object CsvManager {
 
     private fun String.trimOrNull(): String? = trim().ifEmpty { null }
     private fun String.safeDouble(): Double = trim().toDoubleOrNull() ?: 0.0
-    private fun String.safeInt(): Int = trim().toIntOrNull() ?: 0
+    /** Parses an Int from a CSV field, returning [default] if the field is blank or non-numeric. */
+    private fun String.safeInt(default: Int = 0): Int = trim().toIntOrNull() ?: default
 
     // ══════════════════════════════════════════════
     //  IMPORT — Parsing
@@ -189,9 +190,9 @@ object CsvManager {
                 val totalCost = f.getOrElse(6) { "0" }.safeDouble()
                 val stationName = f.getOrElse(11) { "" }.trimOrNull()
                 val notes = f.getOrElse(12) { "" }.trimOrNull()
-                val day = f.getOrElse(13) { "1" }.safeInt()
-                val month = f.getOrElse(14) { "1" }.safeInt()
-                val year = f.getOrElse(15) { "2024" }.safeInt()
+                val day   = f.getOrElse(13) { "1" }.safeInt(1).coerceAtLeast(1)
+                val month = f.getOrElse(14) { "1" }.safeInt(1).coerceIn(1, 12)
+                val year  = f.getOrElse(15) { "2024" }.safeInt(2024).let { if (it == 0) 2024 else it }
                 val receiptPath = f.getOrElse(16) { "" }.trimOrNull()
                 val recordType = f.getOrElse(19) { "0" }.safeInt()
                 val recordDesc = f.getOrElse(20) { "" }.trimOrNull()
@@ -290,11 +291,11 @@ object CsvManager {
                 var endOdo = f.getOrElse(3) { "0" }.safeDouble()
                 if (endOdo == 0.0) endOdo = startOdo // incomplete trip
 
-                val depDay = f.getOrElse(6) { "1" }.safeInt()
-                val depMonth = f.getOrElse(7) { "1" }.safeInt()
-                val depYear = f.getOrElse(8) { "2024" }.safeInt()
-                val depHour = f.getOrElse(9) { "0" }.safeInt()
-                val depMin = f.getOrElse(10) { "0" }.safeInt()
+                val depDay   = f.getOrElse(6) { "1" }.safeInt(1).coerceAtLeast(1)
+                val depMonth = f.getOrElse(7) { "1" }.safeInt(1).coerceIn(1, 12)
+                val depYear  = f.getOrElse(8) { "2024" }.safeInt(2024).let { if (it == 0) 2024 else it }
+                val depHour  = f.getOrElse(9) { "0" }.safeInt(0)
+                val depMin   = f.getOrElse(10) { "0" }.safeInt(0)
 
                 val date = toEpochMillisFull(depDay, depMonth, depYear, depHour, depMin)
                 val purpose = f.getOrElse(24) { "Personal" }.trim().ifEmpty { "Personal" }

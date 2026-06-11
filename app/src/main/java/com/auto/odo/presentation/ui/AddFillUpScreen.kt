@@ -21,23 +21,66 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.data.entity.VehicleEntity
+import com.auto.odo.presentation.theme.OdoTheme
+import com.auto.odo.presentation.viewmodel.AddFillUpUiState
 import com.auto.odo.presentation.viewmodel.AddFillUpViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddFillUpScreen(
     viewModel: AddFillUpViewModel,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    AddFillUpContent(
+        uiState = uiState,
+        autoHideTitleBar = autoHideTitleBar,
+        fullScreenStatusBar = fullScreenStatusBar,
+        onNavigateBack = onNavigateBack,
+        onDateChanged = viewModel::onDateChanged,
+        onOdometerChanged = viewModel::onOdometerChanged,
+        onQuantityChanged = viewModel::onQuantityChanged,
+        onPricePerUnitChanged = viewModel::onPricePerUnitChanged,
+        onTotalCostChanged = viewModel::onTotalCostChanged,
+        onPartialTankChanged = viewModel::onPartialTankChanged,
+        onStationNameChanged = viewModel::onStationNameChanged,
+        onNotesChanged = viewModel::onNotesChanged,
+        onReceiptAttached = viewModel::onReceiptAttached,
+        onSaveFillUp = viewModel::saveFillUp
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddFillUpContent(
+    uiState: AddFillUpUiState,
+    autoHideTitleBar: Boolean = true,
+    fullScreenStatusBar: Boolean = false,
+    onNavigateBack: () -> Unit,
+    onDateChanged: (Long) -> Unit,
+    onOdometerChanged: (String) -> Unit,
+    onQuantityChanged: (String) -> Unit,
+    onPricePerUnitChanged: (String) -> Unit,
+    onTotalCostChanged: (String) -> Unit,
+    onPartialTankChanged: (Boolean) -> Unit,
+    onStationNameChanged: (String) -> Unit,
+    onNotesChanged: (String) -> Unit,
+    onReceiptAttached: (String?) -> Unit,
+    onSaveFillUp: () -> Unit
+) {
     val scrollState = rememberScrollState()
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val receiptPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        viewModel.onReceiptAttached(uri?.toString())
+        onReceiptAttached(uri?.toString())
     }
 
     var showDatePicker by remember { mutableStateOf(false) }
@@ -49,6 +92,8 @@ fun AddFillUpScreen(
     }
 
     Scaffold(
+        modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
+        contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
                 title = { Text("Log Fill-Up", fontWeight = FontWeight.Bold) },
@@ -57,8 +102,10 @@ fun AddFillUpScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background
                 )
             )
         }
@@ -66,7 +113,8 @@ fun AddFillUpScreen(
         val vehicle = uiState.selectedVehicle
         if (vehicle == null) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                if (uiState.isSaving) CircularProgressIndicator()
+                else Text("No vehicle selected")
             }
             return@Scaffold
         }
@@ -96,7 +144,7 @@ fun AddFillUpScreen(
                         Text(vehicle.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     }
                     Text(
-                        "${vehicle.distanceUnit} / ${if(vehicle.fuelUnit == "Liters") "Liters" else "Gallons"}",
+                        "${vehicle.distanceUnit} / ${if(vehicle.fuelUnit == "Liters") "L" else "gal"}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                     )
@@ -104,7 +152,7 @@ fun AddFillUpScreen(
             }
 
             // 2. Date Trigger
-            val sdf = SimpleDateFormat("dd MMMM yyyy", Locale.getDefault())
+            val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
                 value = sdf.format(Date(uiState.date)),
                 onValueChange = {},
@@ -118,10 +166,10 @@ fun AddFillUpScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            // 3. Odometer Input with Error/Warning
+            // 3. Odometer Input
             OutlinedTextField(
                 value = uiState.odometer,
-                onValueChange = { viewModel.onOdometerChanged(it) },
+                onValueChange = onOdometerChanged,
                 label = { Text("Odometer Reading (${vehicle.distanceUnit})") },
                 placeholder = { Text("Last known: ${uiState.lastKnownOdometer}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -143,7 +191,7 @@ fun AddFillUpScreen(
             ) {
                 OutlinedTextField(
                     value = uiState.quantity,
-                    onValueChange = { viewModel.onQuantityChanged(it) },
+                    onValueChange = onQuantityChanged,
                     label = { Text("Quantity (${if(vehicle.fuelUnit == "Liters") "L" else "gal"})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f)
@@ -151,8 +199,8 @@ fun AddFillUpScreen(
 
                 OutlinedTextField(
                     value = uiState.pricePerUnit,
-                    onValueChange = { viewModel.onPricePerUnitChanged(it) },
-                    label = { Text("Price/${if(vehicle.fuelUnit == "Liters") "L" else "gal"} (${vehicle.currency})") },
+                    onValueChange = onPricePerUnitChanged,
+                    label = { Text("Price Unit (${vehicle.currency})") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f)
                 )
@@ -160,7 +208,7 @@ fun AddFillUpScreen(
 
             OutlinedTextField(
                 value = uiState.totalCost,
-                onValueChange = { viewModel.onTotalCostChanged(it) },
+                onValueChange = onTotalCostChanged,
                 label = { Text("Total Cost (${vehicle.currency})") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
@@ -180,14 +228,14 @@ fun AddFillUpScreen(
                 }
                 Switch(
                     checked = uiState.isPartialTank,
-                    onCheckedChange = { viewModel.onPartialTankChanged(it) }
+                    onCheckedChange = onPartialTankChanged
                 )
             }
 
             // 6. Filling Station Name
             OutlinedTextField(
                 value = uiState.stationName,
-                onValueChange = { viewModel.onStationNameChanged(it) },
+                onValueChange = onStationNameChanged,
                 label = { Text("Filling Station Name (Optional)") },
                 modifier = Modifier.fillMaxWidth()
             )
@@ -195,7 +243,7 @@ fun AddFillUpScreen(
             // 7. Notes
             OutlinedTextField(
                 value = uiState.notes,
-                onValueChange = { viewModel.onNotesChanged(it) },
+                onValueChange = onNotesChanged,
                 label = { Text("Notes (Optional)") },
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth()
@@ -204,12 +252,6 @@ fun AddFillUpScreen(
             // 8. Receipt Attachment
             Text("Receipt Attachment", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             
-            val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-                if (uri != null) {
-                    viewModel.onReceiptAttached(uri.toString())
-                }
-            }
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -246,7 +288,7 @@ fun AddFillUpScreen(
 
             // Save Button
             Button(
-                onClick = { viewModel.saveFillUp() },
+                onClick = onSaveFillUp,
                 enabled = !uiState.isSaving,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -261,7 +303,6 @@ fun AddFillUpScreen(
         }
     }
 
-    // Material 3 DatePickerDialog trigger
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = uiState.date)
         DatePickerDialog(
@@ -269,7 +310,7 @@ fun AddFillUpScreen(
             confirmButton = {
                 TextButton(onClick = {
                     datePickerState.selectedDateMillis?.let {
-                        viewModel.onDateChanged(it)
+                        onDateChanged(it)
                     }
                     showDatePicker = false
                 }) {
@@ -284,5 +325,32 @@ fun AddFillUpScreen(
         ) {
             DatePicker(state = datePickerState)
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun AddFillUpPreview() {
+    OdoTheme {
+        AddFillUpContent(
+            uiState = AddFillUpUiState(
+                selectedVehicle = VehicleEntity(1, "Toyota Camry", "Car", "Liters", "km", "USD"),
+                odometer = "50000",
+                quantity = "45",
+                pricePerUnit = "1.5",
+                totalCost = "67.5"
+            ),
+            onNavigateBack = {},
+            onDateChanged = {},
+            onOdometerChanged = {},
+            onQuantityChanged = {},
+            onPricePerUnitChanged = {},
+            onTotalCostChanged = {},
+            onPartialTankChanged = {},
+            onStationNameChanged = {},
+            onNotesChanged = {},
+            onReceiptAttached = {},
+            onSaveFillUp = {}
+        )
     }
 }

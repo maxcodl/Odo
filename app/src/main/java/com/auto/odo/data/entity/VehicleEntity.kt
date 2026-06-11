@@ -1,8 +1,10 @@
 package com.auto.odo.data.entity
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Immutable
 @Entity(tableName = "vehicles")
 data class VehicleEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,

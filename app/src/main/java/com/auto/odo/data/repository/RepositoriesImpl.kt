@@ -4,6 +4,7 @@ import com.auto.odo.data.dao.*
 import com.auto.odo.data.entity.*
 import com.auto.odo.domain.repository.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 
 class VehicleRepositoryImpl @Inject constructor(
@@ -11,6 +12,9 @@ class VehicleRepositoryImpl @Inject constructor(
 ) : VehicleRepository {
     override fun getAllVehicles(): Flow<List<VehicleEntity>> = dao.getAllVehicles()
     override suspend fun getVehicleById(id: Long): VehicleEntity? = dao.getVehicleById(id)
+    // NEW: uses the targeted DAO query instead of loading all vehicles
+    override fun getVehicleByIdFlow(id: Long): Flow<VehicleEntity?> =
+        dao.getVehicleByIdFlow(id).distinctUntilChanged()
     override suspend fun insertVehicle(vehicle: VehicleEntity): Long = dao.insertVehicle(vehicle)
     override suspend fun updateVehicle(vehicle: VehicleEntity) = dao.updateVehicle(vehicle)
     override suspend fun deleteVehicle(vehicle: VehicleEntity) = dao.deleteVehicle(vehicle)
