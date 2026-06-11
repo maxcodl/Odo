@@ -29,3 +29,5 @@ IDENTITY.md
 HEARTBEAT.md
 TOOLS.md
 .openclaw/workspace-state.json
+keystore_base64.txt
+odo-release.jks
