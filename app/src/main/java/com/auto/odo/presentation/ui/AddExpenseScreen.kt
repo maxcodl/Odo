@@ -255,7 +255,7 @@ fun AddExpenseScreenContent(
 @Composable
 fun AddExpensePreview() {
     val mockVehicle = VehicleEntity(
-        id = 1,
+        id = 1L,
         name = "Yamaha R15M",
         type = "Bike",
         fuelUnit = "Liters",
