@@ -53,13 +53,25 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
+override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        
+        // FIX: Using SystemBarStyle.auto makes both bars transparent and automatically 
+        // adjusts the icon colors (clock/battery) for light or dark mode!
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT, 
+                android.graphics.Color.TRANSPARENT
+            ),
+            navigationBarStyle = androidx.activity.SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT, 
+                android.graphics.Color.TRANSPARENT
+            )
+        )
+        
         setContent {
             val mainViewModel: MainViewModel = hiltViewModel()
             
-            // Ensure status bar is always visible and transparent
             val view = LocalView.current
             LaunchedEffect(Unit) {
                 val window = (view.context as Activity).window
@@ -94,11 +106,39 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
         currentRoute == Screen.UpdateOdometer.route
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        // FIX 1: This MUST be Transparent so the screens can draw all the way down
+        containerColor = Color.Transparent, 
+        bottomBar = {
+            if (!isFormRoute) {
+                FloatingNavigationBar(
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    currentRoute = currentRoute,
+                    style = navBarStyle,
+                    onNavigate = { screen ->
+                        if (currentRoute != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    ) { innerPadding -> 
         NavHost(
             navController = navController,
             startDestination = Screen.Dashboard.route,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize(), 
+                // FIX 2: I completely deleted the `.padding(innerPadding)` here!
+                // Now the NavHost can stretch all the way to the absolute bottom of the screen.
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
@@ -107,7 +147,6 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             composable(Screen.Dashboard.route) {
                 val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
                 val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
-                // Scoping ViewModels to Activity makes tab switching instant as data is preserved
                 DashboardScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
@@ -225,28 +264,6 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
-        }
-
-        // Global Floating Navigation Bar overlay
-        if (!isFormRoute) {
-            FloatingNavigationBar(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp),
-                currentRoute = currentRoute,
-                style = navBarStyle,
-                onNavigate = { screen ->
-                    if (currentRoute != screen.route) {
-                        navController.navigate(screen.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                }
-            )
         }
     }
 }

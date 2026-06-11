@@ -167,16 +167,16 @@ fun DashboardScreenContent(
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.background
+                    containerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background
                 )
             )
         },
-        floatingActionButton = {
+floatingActionButton = {
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 110.dp) // Increased to clear Floating Navigation Bar
+                modifier = Modifier.padding(bottom = 110.dp) 
             ) {
                 AnimatedVisibility(
                     visible = isFabExpanded,
