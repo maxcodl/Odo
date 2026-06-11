@@ -9,4 +9,4 @@
 }
 
 # 3. Suppress benign warnings from dependencies (keeps build logs clean)
--dontwarn dontwarn class **
+-dontwarn class **
