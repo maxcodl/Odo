@@ -256,8 +256,8 @@ fun AddExpenseScreenContent(
 fun AddExpensePreview() {
     val mockVehicle = VehicleEntity(
         id = 1,
-        name = "Tesla Model 3",
-        type = "Car",
+        name = "Yamaha R15M",
+        type = "Bike",
         fuelUnit = "Liters",
         distanceUnit = "km",
         currency = "INR"

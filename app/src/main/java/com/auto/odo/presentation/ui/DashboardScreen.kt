@@ -613,7 +613,7 @@ fun AddVehicleDialog(onDismiss: () -> Unit, onConfirm: (name: String, type: Stri
         Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Column(modifier = Modifier.padding(20.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Add New Vehicle", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Vehicle Name (e.g. Yamaha R15)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Vehicle Name (e.g. Yamaha R15M)") }, modifier = Modifier.fillMaxWidth())
                 Text("Vehicle Type", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { RadioButton(selected = type == "Car", onClick = { type = "Car" }); Text("Car") }
@@ -647,7 +647,7 @@ fun AddVehicleDialog(onDismiss: () -> Unit, onConfirm: (name: String, type: Stri
 fun DashboardPreview() {
     val mockVehicle = VehicleEntity(
         id = 1,
-        name = "Tesla Model 3",
+        name = "Yamaha R15M",
         type = "Car",
         fuelUnit = "Liters",
         distanceUnit = "km",

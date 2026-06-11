@@ -15,11 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.auto.odo.presentation.theme.OdoTheme
 import com.auto.odo.presentation.viewmodel.AddServiceViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -57,7 +59,7 @@ fun AddServiceScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddServiceScreenContent(
-    uiState: com.auto.odo.presentation.viewmodel.AddServiceUiState, // Double check your package name for state class
+    uiState: com.auto.odo.presentation.viewmodel.AddServiceUiState,
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false,
     onNavigateBack: () -> Unit = {},
@@ -266,8 +268,8 @@ fun AddServiceScreenContent(
 @Composable
 fun AddServicePreview() {
     val mockVehicle = com.auto.odo.data.entity.VehicleEntity(
-        id = 1,
-        name = "Yamaha R15",
+        id = 1L,
+        name = "Yamaha R15M",
         type = "Bike",
         fuelUnit = "Liters",
         distanceUnit = "km",
@@ -278,7 +280,7 @@ fun AddServicePreview() {
         selectedVehicle = mockVehicle,
         date = System.currentTimeMillis(),
         odometer = "14200",
-        lastKnownOdometer = "12500",
+        lastKnownOdometer = 12500.0,
         serviceType = "Oil Change",
         totalCost = "1250",
         notes = "Engine oil and filter element replacement.",
