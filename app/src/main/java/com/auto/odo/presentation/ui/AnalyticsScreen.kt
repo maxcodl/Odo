@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.presentation.viewmodel.AnalyticsViewModel
@@ -42,7 +43,6 @@ fun AnalyticsScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        // VISUAL BUG FIX & EDGE-TO-EDGE:
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         containerColor = MaterialTheme.colorScheme.background, 
         topBar = {
@@ -72,7 +72,7 @@ fun AnalyticsScreen(
             } else {
                 val sym = currencySymbol(uiState.activeVehicle?.currency ?: "USD")
                 val dist = uiState.activeVehicle?.distanceUnit ?: "km"
-                val fuelUnit = uiState.activeVehicle?.fuelUnit ?: "Liters"
+                val fuelUnitLabel = if (uiState.activeVehicle?.fuelUnit == "Gallons") "gal" else "L"
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -118,11 +118,10 @@ fun AnalyticsScreen(
                         }
                     }
 
-                    // SECTION 1: Summary Card (Theme Fixed!)
+                    // SECTION 1: Summary Card
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            // THEME FIX: Changed from clashing primaryContainer to seamless Surface
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
                             Column(modifier = Modifier.padding(20.dp)) {
@@ -145,7 +144,7 @@ fun AnalyticsScreen(
                         }
                     }
 
-                    // SECTION 2: Donut Chart (Cost Breakdown)
+                    // SECTION 2: Donut Chart
                     item {
                         if (uiState.totalCost > 0) {
                             Card(
@@ -280,20 +279,56 @@ fun AnalyticsScreen(
                         }
                     }
 
-                    // SECTION 4: Key Performance Grid
+                    // SECTION 4: Fuel Economics Grid
                     item {
                         Column {
-                            Text("Key Performance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
+                            Text("Fuel Economics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
                             
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                MiniStatCard(modifier = Modifier.weight(1f), title = "Avg Efficiency", value = "%.1f".format(uiState.averageEfficiency), subtitle = "$dist/${if(fuelUnit == "Liters") "L" else "gal"}")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Avg Efficiency", value = "%.1f".format(uiState.averageEfficiency), subtitle = "$dist/$fuelUnitLabel")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Fuel Cost / $dist", value = "$sym ${"%.2f".format(uiState.fuelCostPerDistUnit)}", subtitle = "Average")
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Avg Price", value = "$sym ${"%.2f".format(uiState.avgPricePerUnit)}", subtitle = "Per $fuelUnitLabel")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Dist Btwn Fills", value = "%.0f".format(uiState.avgDistBtwnFillUps), subtitle = dist)
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Qty / Fill-Up", value = "%.1f".format(uiState.avgQtyPerFillUp), subtitle = fuelUnitLabel)
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Cost / Fill-Up", value = "$sym ${"%.2f".format(uiState.avgCostPerFillUp)}", subtitle = "Average")
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Fill-Ups / Mth", value = "%.1f".format(uiState.fillUpsPerMonth), subtitle = "Average")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Fuel Cost / Mth", value = "$sym ${"%.0f".format(uiState.fuelCostPerMonth)}", subtitle = "Average")
+                            }
+                        }
+                    }
+
+                    // SECTION 5: Operating Costs & Extremes Grid
+                    item {
+                        Column {
+                            Text("Operating Costs & Records", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp, top = 8.dp))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Service / $dist", value = "$sym ${"%.2f".format(uiState.serviceCostPerDistUnit)}", subtitle = "Average")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Expense / $dist", value = "$sym ${"%.2f".format(uiState.expenseCostPerDistUnit)}", subtitle = "Average")
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Daily Burn Rate", value = "$sym ${"%.2f".format(uiState.costPerDay)}", subtitle = "All Costs")
                                 MiniStatCard(modifier = Modifier.weight(1f), title = "Total Tracked", value = "%.0f".format(uiState.totalDistanceTracked), subtitle = dist)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                MiniStatCard(modifier = Modifier.weight(1f), title = "Daily Burn Rate", value = "$sym ${"%.2f".format(uiState.costPerDay)}", subtitle = "Per Day")
-                                MiniStatCard(modifier = Modifier.weight(1f), title = "Max Fuel Price", value = "$sym ${"%.2f".format(uiState.maxFuelPrice)}", subtitle = "Per $fuelUnit")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Max Fuel Price", value = "$sym ${"%.2f".format(uiState.maxFuelPrice)}", subtitle = "Per $fuelUnitLabel")
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Max Fill-Up", value = "%.1f".format(uiState.maxFillUpVolume), subtitle = fuelUnitLabel)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             
@@ -328,10 +363,10 @@ fun MiniStatCard(modifier: Modifier = Modifier, title: String, value: String, su
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(modifier = Modifier.height(4.dp))
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

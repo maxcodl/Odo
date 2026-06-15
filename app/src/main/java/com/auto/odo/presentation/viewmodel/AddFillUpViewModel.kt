@@ -56,16 +56,35 @@ class AddFillUpViewModel @Inject constructor(
                         val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
                         val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
                             UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
+                        
                         _uiState.update {
                             it.copy(
                                 selectedVehicle = vehicle,
                                 lastKnownOdometer = lastOdoDisplay,
+                                // BUG FIX: Formatted the pre-filled string to zero decimals
                                 odometer = if (lastOdoDisplay > 0)
-                                    String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
+                                    String.format(java.util.Locale.US, "%.0f", lastOdoDisplay) else ""
                             )
                         }
                     }
                 }
+        }
+    }
+
+    // NEW: Clears everything except vehicle data and odometer
+    fun clearForm() {
+        _uiState.update { 
+            it.copy(
+                date = System.currentTimeMillis(),
+                quantity = "",
+                pricePerUnit = "",
+                totalCost = "",
+                isPartialTank = false,
+                stationName = "",
+                notes = "",
+                receiptPath = null,
+                odometerError = null
+            )
         }
     }
 
@@ -79,21 +98,19 @@ class AddFillUpViewModel @Inject constructor(
         validateOdometerChronologically()
     }
 
-fun onQuantityChanged(qty: String) {
+    fun onQuantityChanged(qty: String) {
         _uiState.update { state ->
-            // Use DoubleOrNull so empty strings are handled cleanly
             val qtyVal = qty.replace(',', '.').toDoubleOrNull()
             val pPUVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull()
             val costVal = state.totalCost.replace(',', '.').toDoubleOrNull()
 
             var newState = state.copy(quantity = qty)
 
-            // If user cleared the field, stop here to avoid calculating with 0
             if (qtyVal == null) return@update newState
 
+            // BUG FIX: If user edits Qty, prioritize updating Total Cost if PPU is present.
             if (pPUVal != null && pPUVal > 0) {
                 val calcCost = qtyVal * pPUVal
-                // ONLY update if the calculated value is mathematically different from what's currently in the box!
                 if (costVal == null || Math.abs(costVal - calcCost) > 0.01) {
                     newState = newState.copy(totalCost = String.format(java.util.Locale.US, "%.2f", calcCost))
                 }
@@ -117,15 +134,17 @@ fun onQuantityChanged(qty: String) {
             
             if (ppuVal == null) return@update newState
 
-            if (qtyVal != null && qtyVal > 0) {
-                val calcCost = qtyVal * ppuVal
-                if (costVal == null || Math.abs(costVal - calcCost) > 0.01) {
-                    newState = newState.copy(totalCost = String.format(java.util.Locale.US, "%.2f", calcCost))
-                }
-            } else if (costVal != null && costVal > 0) {
+            // BUG FIX: The user wants Liters calculated if Total Cost is present.
+            // We prioritize costVal check over qtyVal check here.
+            if (costVal != null && costVal > 0) {
                 val calcQty = costVal / ppuVal
                 if (qtyVal == null || Math.abs(qtyVal - calcQty) > 0.01) {
                     newState = newState.copy(quantity = String.format(java.util.Locale.US, "%.2f", calcQty))
+                }
+            } else if (qtyVal != null && qtyVal > 0) {
+                val calcCost = qtyVal * ppuVal
+                if (costVal == null || Math.abs(costVal - calcCost) > 0.01) {
+                    newState = newState.copy(totalCost = String.format(java.util.Locale.US, "%.2f", calcCost))
                 }
             }
             newState
@@ -142,6 +161,7 @@ fun onQuantityChanged(qty: String) {
             
             if (costVal == null) return@update newState
 
+            // If Cost is changed, and PPU exists -> calculate Liters
             if (pPUVal != null && pPUVal > 0) {
                 val calcQty = costVal / pPUVal
                 if (qtyVal == null || Math.abs(qtyVal - calcQty) > 0.01) {
@@ -157,8 +177,6 @@ fun onQuantityChanged(qty: String) {
         }
     }
 
-
-    
     fun onPartialTankChanged(partial: Boolean) {
         _uiState.update { it.copy(isPartialTank = partial) }
     }
@@ -187,13 +205,13 @@ fun onQuantityChanged(qty: String) {
                     is OdoValidationResult.InvalidBefore -> {
                         val limitDisplay = if (vehicle.distanceUnit == "miles")
                             UnitConverter.kmToMiles(result.limit) else result.limit
-                        it.copy(odometerError = "Reading is lower than a previous log (%.1f ${vehicle.distanceUnit})"
+                        it.copy(odometerError = "Reading is lower than a previous log (%.0f ${vehicle.distanceUnit})"
                             .format(limitDisplay))
                     }
                     is OdoValidationResult.InvalidAfter -> {
                         val limitDisplay = if (vehicle.distanceUnit == "miles")
                             UnitConverter.kmToMiles(result.limit) else result.limit
-                        it.copy(odometerError = "Reading is higher than a subsequent log (%.1f ${vehicle.distanceUnit})"
+                        it.copy(odometerError = "Reading is higher than a subsequent log (%.0f ${vehicle.distanceUnit})"
                             .format(limitDisplay))
                     }
                 }
@@ -231,11 +249,11 @@ fun onQuantityChanged(qty: String) {
                         odometerError = when (validation) {
                             is OdoValidationResult.InvalidBefore -> {
                                 val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
-                                "Must be >= previous odometer (%.1f ${vehicle.distanceUnit})".format(lim)
+                                "Must be >= previous odometer (%.0f ${vehicle.distanceUnit})".format(lim)
                             }
                             is OdoValidationResult.InvalidAfter -> {
                                 val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
-                                "Must be <= subsequent odometer (%.1f ${vehicle.distanceUnit})".format(lim)
+                                "Must be <= subsequent odometer (%.0f ${vehicle.distanceUnit})".format(lim)
                             }
                             else -> "Invalid odometer reading"
                         }

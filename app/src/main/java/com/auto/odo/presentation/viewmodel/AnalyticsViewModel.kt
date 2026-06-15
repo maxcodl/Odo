@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.math.max
 
-// Represents a point on our monthly bar chart
 data class MonthlyChartPoint(
     val monthYear: String, 
     val displayLabel: String, 
@@ -26,22 +25,36 @@ data class AnalyticsUiState(
     val activeVehicle: VehicleEntity? = null,
     val isAllVehiclesSelected: Boolean = false,
     
+    // Core Totals
     val totalFuelCost: Double = 0.0,
     val totalServiceCost: Double = 0.0,
     val totalExpenseCost: Double = 0.0,
     val totalCost: Double = 0.0,
     val costPerDistanceUnit: Double = 0.0,
-    
+    val totalDistanceTracked: Double = 0.0,
     val projectedYearlyCost: Double = 0.0,
     val costPerDay: Double = 0.0,
-    val averageEfficiency: Double = 0.0,
-    val totalDistanceTracked: Double = 0.0,
     
+    // NEW: Detailed Fuel Economics
+    val averageEfficiency: Double = 0.0,
+    val fillUpsCount: Int = 0,
+    val fuelCostPerDistUnit: Double = 0.0,
+    val serviceCostPerDistUnit: Double = 0.0,
+    val expenseCostPerDistUnit: Double = 0.0,
+    val avgDistBtwnFillUps: Double = 0.0,
+    val avgQtyPerFillUp: Double = 0.0,
+    val avgCostPerFillUp: Double = 0.0,
+    val avgPricePerUnit: Double = 0.0,
+    val fillUpsPerMonth: Double = 0.0,
+    val fuelCostPerMonth: Double = 0.0,
+    
+    // Extremes
     val maxFuelPrice: Double = 0.0,
     val maxFillUpVolume: Double = 0.0,
     val longestDistanceBetweenFills: Double = 0.0,
     val shortestDistanceBetweenFills: Double = 0.0,
     
+    // Chart Data
     val allMonthlyData: List<MonthlyChartPoint> = emptyList(),
     val monthlyChartData: List<MonthlyChartPoint> = emptyList(),
     val selectedMonthWindowIndex: Int = 0,
@@ -62,7 +75,7 @@ class AnalyticsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AnalyticsUiState())
     val uiState = _uiState.asStateFlow()
 
-    private val _selectedVehicleId = MutableStateFlow<Long?>(null) // null = default to first, -1 = All Vehicles
+    private val _selectedVehicleId = MutableStateFlow<Long?>(null)
 
     init {
         loadAnalytics()
@@ -70,11 +83,9 @@ class AnalyticsViewModel @Inject constructor(
 
     private fun loadAnalytics() {
         viewModelScope.launch {
-            // Listen to vehicle dropdown selections
             _selectedVehicleId.collect { selectedId ->
                 _uiState.update { it.copy(isLoading = true) }
                 
-                // Fetch the list of vehicles directly
                 val vehicles = vehicleDao.getAllVehiclesList()
                 
                 if (vehicles.isEmpty()) {
@@ -83,7 +94,7 @@ class AnalyticsViewModel @Inject constructor(
                 }
 
                 val targetVehicle = if (selectedId == -1L) null else (vehicles.find { it.id == selectedId } ?: vehicles.first())
-                val isAll = selectedId == -1L || selectedId == null && vehicles.size > 1
+                val isAll = selectedId == -1L || (selectedId == null && vehicles.size > 1)
                 val processingList = if (isAll) vehicles else listOf(targetVehicle!!)
 
                 val baseCurrency = vehicles.first().currency
@@ -103,7 +114,10 @@ class AnalyticsViewModel @Inject constructor(
                 var overallLongestDelta = 0.0
 
                 var sumCostPerDay = 0.0
+                var sumFuelCostPerDay = 0.0
                 var sumProjectedYearly = 0.0
+                var totalFillUps = 0
+                var totalDaysOwned = 0.0
 
                 val combinedMap = mutableMapOf<String, MonthlyChartPoint>()
 
@@ -153,6 +167,8 @@ class AnalyticsViewModel @Inject constructor(
                     if (vMaxVolConv > overallMaxVolume) overallMaxVolume = vMaxVolConv
 
                     val allFuelLogs = fuelLogDao.getFuelLogsSortedByOdometer(v.id)
+                    totalFillUps += allFuelLogs.size
+                    
                     if (allFuelLogs.size >= 2) {
                         for (i in 1 until allFuelLogs.size) {
                             val delta = allFuelLogs[i].odometer - allFuelLogs[i - 1].odometer
@@ -171,9 +187,12 @@ class AnalyticsViewModel @Inject constructor(
                         val firstLogDate = allFuelLogs.first().date
                         val lastLogDate = allFuelLogs.last().date
                         val daysOwned = max(1.0, (lastLogDate - firstLogDate) / (1000.0 * 60 * 60 * 24))
+                        totalDaysOwned += daysOwned
+                        
                         val vTotal = vFuel + vService + vExpense
                         val vCPD = vTotal / daysOwned
                         sumCostPerDay += vCPD
+                        sumFuelCostPerDay += (vFuel / daysOwned)
                         if (daysOwned >= 14) sumProjectedYearly += (vCPD * 365)
                     }
 
@@ -199,10 +218,23 @@ class AnalyticsViewModel @Inject constructor(
                 }
 
                 val sumTotalCost = sumFuelCost + sumServiceCost + sumExpenseCost
+                val allDataSorted = combinedMap.values.sortedBy { it.monthYear }
+                
+                // Advanced Math
                 val costPerUnit = if (sumDisplayDistance > 0) sumTotalCost / sumDisplayDistance else 0.0
                 val avgEfficiency = if (sumDisplayVolume > 0) sumDisplayDistance / sumDisplayVolume else 0.0
                 val uiShortestDelta = if (overallShortestDelta == Double.MAX_VALUE) 0.0 else overallShortestDelta
-                val allDataSorted = combinedMap.values.sortedBy { it.monthYear }
+                
+                val avgDistBtwnFillUps = if (totalFillUps > 1) sumDisplayDistance / (totalFillUps - 1) else 0.0
+                val avgQtyPerFillUp = if (totalFillUps > 0) sumDisplayVolume / totalFillUps else 0.0
+                val avgCostPerFillUp = if (totalFillUps > 0) sumFuelCost / totalFillUps else 0.0
+                val avgPricePerUnit = if (sumDisplayVolume > 0) sumFuelCost / sumDisplayVolume else 0.0
+                val fillUpsPerMonth = if (totalDaysOwned > 0) (totalFillUps / totalDaysOwned) * 30.4 else 0.0
+                
+                val fuelCostPerDistUnit = if (sumDisplayDistance > 0) sumFuelCost / sumDisplayDistance else 0.0
+                val serviceCostPerDistUnit = if (sumDisplayDistance > 0) sumServiceCost / sumDisplayDistance else 0.0
+                val expenseCostPerDistUnit = if (sumDisplayDistance > 0) sumExpenseCost / sumDisplayDistance else 0.0
+                val fuelCostPerMonth = sumFuelCostPerDay * 30.4
 
                 val displayVehicle = if (isAll) {
                     VehicleEntity(id = -1, name = "All Vehicles", type = "All", fuelUnit = baseFuelUnit, distanceUnit = baseDistUnit, currency = baseCurrency)
@@ -222,6 +254,16 @@ class AnalyticsViewModel @Inject constructor(
                         costPerDay = sumCostPerDay,
                         averageEfficiency = avgEfficiency,
                         totalDistanceTracked = sumDisplayDistance,
+                        fillUpsCount = totalFillUps,
+                        fuelCostPerDistUnit = fuelCostPerDistUnit,
+                        serviceCostPerDistUnit = serviceCostPerDistUnit,
+                        expenseCostPerDistUnit = expenseCostPerDistUnit,
+                        avgDistBtwnFillUps = avgDistBtwnFillUps,
+                        avgQtyPerFillUp = avgQtyPerFillUp,
+                        avgCostPerFillUp = avgCostPerFillUp,
+                        avgPricePerUnit = avgPricePerUnit,
+                        fillUpsPerMonth = fillUpsPerMonth,
+                        fuelCostPerMonth = fuelCostPerMonth,
                         maxFuelPrice = overallMaxFuelPrice,
                         maxFillUpVolume = overallMaxVolume,
                         longestDistanceBetweenFills = overallLongestDelta,
