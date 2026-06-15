@@ -292,7 +292,7 @@ fun AnalyticsScreen(
                             
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 MiniStatCard(modifier = Modifier.weight(1f), title = "Avg Price", value = "$sym ${"%.2f".format(uiState.avgPricePerUnit)}", subtitle = "Per $fuelUnitLabel")
-                                MiniStatCard(modifier = Modifier.weight(1f), title = "Dist Btwn Fills", value = "%.0f".format(uiState.avgDistBtwnFillUps), subtitle = dist)
+                                MiniStatCard(modifier = Modifier.weight(1f), title = "Distance / Fill Cycle", value = "%.0f".format(uiState.avgDistBtwnFillUps), subtitle = dist)
                             }
                             Spacer(modifier = Modifier.height(12.dp))
 

@@ -275,7 +275,6 @@ fun LogsFeedContent(
     }
 }
 
-// NEW: The Full Screen Detailed View implementation
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LogDetailsFullScreen(
@@ -347,11 +346,13 @@ fun LogDetailsFullScreen(
                         Icon(Icons.Default.Edit, contentDescription = "Edit")
                     }
                 },
+                // THEME FIX: Changed from heavy primary block to seamless background matching
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = MaterialTheme.colorScheme.background,
+                    scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
+                    actionIconContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         }
