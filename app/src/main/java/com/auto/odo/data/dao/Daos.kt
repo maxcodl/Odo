@@ -4,6 +4,13 @@ import androidx.room.*
 import com.auto.odo.data.entity.*
 import kotlinx.coroutines.flow.Flow
 
+// --- HELPER CLASS FOR ANALYTICS ---
+// Room will automatically map the SQL grouping results into this object
+data class MonthlySpend(
+    val monthYear: String, // Will output format: "2025-06"
+    val total: Double
+)
+
 @Dao
 interface VehicleDao {
     @Query("SELECT * FROM vehicles ORDER BY name ASC")
@@ -48,7 +55,7 @@ interface FuelLogDao {
     @Query("SELECT SUM(totalCost) FROM fuel_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getFuelCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
 
-    // --- ANALYTICS QUERIES ---
+    // --- ANALYTICS QUERIES (PHASE 1) ---
     @Query("SELECT SUM(totalCost) FROM fuel_logs WHERE vehicleId = :vehicleId")
     suspend fun getTotalFuelCost(vehicleId: Long): Double?
 
@@ -60,7 +67,23 @@ interface FuelLogDao {
 
     @Query("SELECT MAX(odometer) FROM fuel_logs WHERE vehicleId = :vehicleId")
     suspend fun getMaxOdometer(vehicleId: Long): Double?
-    // -------------------------
+
+    @Query("SELECT MAX(pricePerUnit) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getMaxFuelPrice(vehicleId: Long): Double?
+
+    @Query("SELECT MAX(quantity) FROM fuel_logs WHERE vehicleId = :vehicleId")
+    suspend fun getMaxFillUpVolume(vehicleId: Long): Double?
+
+    // Grouping by Month-Year for Time-Series Charts
+    @Query("""
+        SELECT strftime('%Y-%m', date / 1000, 'unixepoch', 'localtime') as monthYear, SUM(totalCost) as total 
+        FROM fuel_logs 
+        WHERE vehicleId = :vehicleId 
+        GROUP BY monthYear 
+        ORDER BY monthYear ASC
+    """)
+    suspend fun getMonthlyFuelSpend(vehicleId: Long): List<MonthlySpend>
+    // -----------------------------------
 
     @Query("SELECT COUNT(*) FROM fuel_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getFillUpCountSince(vehicleId: Long, sinceDate: Long): Flow<Int>
@@ -92,10 +115,19 @@ interface ServiceLogDao {
     @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getServiceCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
 
-    // --- ANALYTICS QUERIES ---
+    // --- ANALYTICS QUERIES (PHASE 1) ---
     @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId")
     suspend fun getTotalServiceCost(vehicleId: Long): Double?
-    // -------------------------
+
+    @Query("""
+        SELECT strftime('%Y-%m', date / 1000, 'unixepoch', 'localtime') as monthYear, SUM(totalCost) as total 
+        FROM service_logs 
+        WHERE vehicleId = :vehicleId 
+        GROUP BY monthYear 
+        ORDER BY monthYear ASC
+    """)
+    suspend fun getMonthlyServiceSpend(vehicleId: Long): List<MonthlySpend>
+    // -----------------------------------
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertServiceLog(log: ServiceLogEntity): Long
@@ -124,10 +156,19 @@ interface ExpenseLogDao {
     @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getExpenseCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
 
-    // --- ANALYTICS QUERIES ---
+    // --- ANALYTICS QUERIES (PHASE 1) ---
     @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId")
     suspend fun getTotalExpenseCost(vehicleId: Long): Double?
-    // -------------------------
+
+    @Query("""
+        SELECT strftime('%Y-%m', date / 1000, 'unixepoch', 'localtime') as monthYear, SUM(totalCost) as total 
+        FROM expense_logs 
+        WHERE vehicleId = :vehicleId 
+        GROUP BY monthYear 
+        ORDER BY monthYear ASC
+    """)
+    suspend fun getMonthlyExpenseSpend(vehicleId: Long): List<MonthlySpend>
+    // -----------------------------------
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExpenseLog(log: ExpenseLogEntity): Long

@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -27,4 +28,14 @@ class MainViewModel @Inject constructor(
 
     val appThemeMode: StateFlow<AppThemeMode> = sessionManager.appThemeMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppThemeMode.STANDARD)
+
+    val showVehicleIcon: StateFlow<Boolean> = sessionManager.showVehicleIcon
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    fun setShowVehicleIcon(show: Boolean) {
+        viewModelScope.launch {
+            // FIX 2: Using 'sessionManager'
+            sessionManager.setShowVehicleIcon(show)
+        }
+    }
 }

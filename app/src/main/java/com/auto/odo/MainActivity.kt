@@ -55,9 +55,6 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
 class MainActivity : ComponentActivity() {
 override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // FIX: Using SystemBarStyle.auto makes both bars transparent and automatically 
-        // adjusts the icon colors (clock/battery) for light or dark mode!
         enableEdgeToEdge(
             statusBarStyle = androidx.activity.SystemBarStyle.auto(
                 android.graphics.Color.TRANSPARENT, 
@@ -95,9 +92,8 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
     val currentRoute = navBackStackEntry?.destination?.route
     val context = LocalContext.current
     val activity = context as ComponentActivity
-
     val navBarStyle by mainViewModel.navBarStyle.collectAsStateWithLifecycle()
-
+    val showVehicleIcon by mainViewModel.showVehicleIcon.collectAsStateWithLifecycle()
     val isFormRoute = remember(currentRoute) {
         currentRoute == Screen.AddFillUp.route ||
         currentRoute == Screen.AddService.route ||
@@ -109,7 +105,6 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
 Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        // FIX 1: This MUST be Transparent so the screens can draw all the way down
         containerColor = Color.Transparent, 
         bottomBar = {
             if (!isFormRoute) {
@@ -136,9 +131,7 @@ Scaffold(
             navController = navController,
             startDestination = Screen.Dashboard.route,
             modifier = Modifier
-                .fillMaxSize(), 
-                // FIX 2: I completely deleted the `.padding(innerPadding)` here!
-                // Now the NavHost can stretch all the way to the absolute bottom of the screen.
+                .fillMaxSize(),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
@@ -151,6 +144,7 @@ Scaffold(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar,
+                    showVehicleIcon = showVehicleIcon,
                     onNavigateToAddFillUp = { navController.navigate(Screen.AddFillUp.route) },
                     onNavigateToAddService = { navController.navigate(Screen.AddService.route) },
                     onNavigateToAddExpense = { navController.navigate(Screen.AddExpense.route) },
@@ -170,7 +164,7 @@ Scaffold(
                 )
             }
 
-composable(Screen.Analytics.route) {
+            composable(Screen.Analytics.route) {
                 val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
                 AnalyticsScreen(
                     viewModel = hiltViewModel(activity),
@@ -184,7 +178,11 @@ composable(Screen.Analytics.route) {
                 SettingsScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
-                    fullScreenStatusBar = fullScreenStatusBar
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    showVehicleIcon = showVehicleIcon,
+                    onShowVehicleIconChange = { newValue -> 
+                        mainViewModel.setShowVehicleIcon(newValue)
+                    }
                 )
             }
 

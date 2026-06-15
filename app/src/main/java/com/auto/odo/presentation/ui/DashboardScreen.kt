@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,6 +52,7 @@ fun DashboardScreen(
     viewModel: DashboardViewModel,
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false,
+    showVehicleIcon: Boolean = true, // NEW
     onNavigateToAddFillUp: () -> Unit,
     onNavigateToAddService: () -> Unit,
     onNavigateToAddExpense: () -> Unit,
@@ -63,6 +65,7 @@ fun DashboardScreen(
         uiState = uiState,
         autoHideTitleBar = autoHideTitleBar,
         fullScreenStatusBar = fullScreenStatusBar,
+        showVehicleIcon = showVehicleIcon, // NEW
         onSelectVehicle = viewModel::selectVehicle,
         onAddVehicle = { name, type, fuelUnit, distanceUnit, currency ->
             viewModel.addVehicle(name, type, fuelUnit, distanceUnit, currency)
@@ -82,6 +85,7 @@ fun DashboardScreenContent(
     uiState: DashboardUiState,
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false,
+    showVehicleIcon: Boolean = true, // NEW
     onSelectVehicle: (Long) -> Unit = {},
     onAddVehicle: (String, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onNavigateToAddFillUp: () -> Unit = {},
@@ -112,13 +116,18 @@ fun DashboardScreenContent(
                                 .clickable { isVehicleMenuExpanded = true }
                                 .padding(vertical = 8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DirectionsCar,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(28.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            // FIX: Conditionally show icon & dynamically check vehicle type
+                            if (showVehicleIcon) {
+                                val headerIcon = if (uiState.selectedVehicle?.type == "Bike") Icons.Default.TwoWheeler else CarSideProfileIcon
+                                Icon(
+                                    imageVector = headerIcon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            
                             Text(
                                 text = uiState.selectedVehicle?.name ?: "Select Vehicle",
                                 fontWeight = FontWeight.Bold,
@@ -145,8 +154,9 @@ fun DashboardScreenContent(
                                         isVehicleMenuExpanded = false
                                     },
                                     leadingIcon = {
+                                        val itemIcon = if (vehicle.type == "Bike") Icons.Default.TwoWheeler else CarSideProfileIcon
                                         Icon(
-                                            imageVector = Icons.Default.DirectionsCar,
+                                            imageVector = itemIcon,
                                             contentDescription = null
                                         )
                                     }
@@ -251,7 +261,7 @@ private fun EmptyVehiclesState(paddingValues: PaddingValues, onAddClick: () -> U
         verticalArrangement = Arrangement.Center
     ) {
         Icon(
-            imageVector = Icons.Default.DirectionsCar,
+            imageVector = CarSideProfileIcon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.outline,
             modifier = Modifier.size(72.dp)

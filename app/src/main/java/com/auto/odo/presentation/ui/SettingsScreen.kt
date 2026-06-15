@@ -55,7 +55,9 @@ private fun persistTreeUriPermission(context: android.content.Context, uri: Uri,
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     autoHideTitleBar: Boolean = true,
-    fullScreenStatusBar: Boolean = false
+    fullScreenStatusBar: Boolean = false,
+    showVehicleIcon: Boolean = true, // NEW
+    onShowVehicleIconChange: (Boolean) -> Unit // NEW
 ) {
     val uriHandler = LocalUriHandler.current
     var showDonatePopup by remember { mutableStateOf(false) }
@@ -179,19 +181,21 @@ fun SettingsScreen(
             // ── Preferences ──────────────────────────────────────────────────
             SectionLabel("Preferences")
 
-            PreferencesSection(
+    PreferencesSection(
                 activeVehicle = uiState.activeVehicle,
                 navBarStyle = uiState.navBarStyle,
                 fullScreenStatusBar = uiState.fullScreenStatusBar,
                 autoHideTitleBar = uiState.autoHideTitleBar,
                 appThemeMode = uiState.appThemeMode,
+                showVehicleIcon = showVehicleIcon, // NEW
                 onChangeCurrency = {
                     uiState.activeVehicle?.let { viewModel.openCurrencyEdit(it) }
                 },
                 onNavBarStyleChange = { viewModel.setNavBarStyle(it) },
                 onFullScreenStatusBarChange = { viewModel.setFullScreenStatusBar(it) },
                 onAutoHideTitleBarChange = { viewModel.setAutoHideTitleBar(it) },
-                onAppThemeModeChange = { viewModel.setAppThemeMode(it) }
+                onAppThemeModeChange = { viewModel.setAppThemeMode(it) },
+                onShowVehicleIconChange = onShowVehicleIconChange // NEW
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -393,8 +397,6 @@ private fun VehiclesSection(
                     }
                 }
             }
-
-            // Add vehicle row
             if (vehicles.isNotEmpty()) {
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp),
@@ -448,7 +450,7 @@ private fun VehicleRow(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val vehicleIcon = if (vehicle.type == "Bike") Icons.Default.TwoWheeler else Icons.Default.DirectionsCar
+        val vehicleIcon = if (vehicle.type == "Bike") Icons.Default.TwoWheeler else CarSideProfileIcon
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -521,11 +523,13 @@ private fun PreferencesSection(
     fullScreenStatusBar: Boolean,
     autoHideTitleBar: Boolean,
     appThemeMode: AppThemeMode,
+    showVehicleIcon: Boolean, // NEW
     onChangeCurrency: () -> Unit,
     onNavBarStyleChange: (NavBarStyle) -> Unit,
     onFullScreenStatusBarChange: (Boolean) -> Unit,
     onAutoHideTitleBarChange: (Boolean) -> Unit,
-    onAppThemeModeChange: (AppThemeMode) -> Unit
+    onAppThemeModeChange: (AppThemeMode) -> Unit,
+    onShowVehicleIconChange: (Boolean) -> Unit // NEW
 ) {
     Card(
         modifier = Modifier
@@ -549,7 +553,14 @@ private fun PreferencesSection(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
             )
-
+PreferenceSwitchRow(
+                icon = CarSideProfileIcon,
+                iconColor = MaterialTheme.colorScheme.secondary,
+                title = "Dashboard Header Icon",
+                subtitle = "Show vehicle icon next to name",
+                checked = showVehicleIcon,
+                onCheckedChange = onShowVehicleIconChange
+            )
             // Nav Bar Style
             var showNavBarStyleMenu by remember { mutableStateOf(false) }
             Box(modifier = Modifier.fillMaxWidth()) {
