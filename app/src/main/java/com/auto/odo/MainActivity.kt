@@ -49,6 +49,7 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
     object AddExpense : Screen("add_expense", "Add Expense", null)
     object AddTrip : Screen("add_trip", "Add Trip", null)
     object UpdateOdometer : Screen("update_odo", "Update Odometer", null)
+    object Backup : Screen("backup", "Backup & Sync", null) // NEW: Added Backup Screen route
 }
 
 @AndroidEntryPoint
@@ -99,7 +100,8 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
         currentRoute == Screen.AddService.route ||
         currentRoute == Screen.AddExpense.route ||
         currentRoute == Screen.AddTrip.route ||
-        currentRoute == Screen.UpdateOdometer.route
+        currentRoute == Screen.UpdateOdometer.route ||
+        currentRoute == Screen.Backup.route // NEW: Hides nav bar on Backup screen
     }
 
 Scaffold(
@@ -182,7 +184,8 @@ Scaffold(
                     showVehicleIcon = showVehicleIcon,
                     onShowVehicleIconChange = { newValue -> 
                         mainViewModel.setShowVehicleIcon(newValue)
-                    }
+                    },
+                    onNavigateToBackup = { navController.navigate(Screen.Backup.route) } // Assumes you add this parameter to SettingsScreen
                 )
             }
 
@@ -263,6 +266,20 @@ Scaffold(
                     viewModel = hiltViewModel(),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            // NEW: Backup Screen Composable
+            composable(
+                route = Screen.Backup.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                BackupScreen(
+                    viewModel = hiltViewModel(),
                     onNavigateBack = { navController.popBackStack() }
                 )
             }

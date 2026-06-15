@@ -56,8 +56,9 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false,
-    showVehicleIcon: Boolean = true, // NEW
-    onShowVehicleIconChange: (Boolean) -> Unit // NEW
+    showVehicleIcon: Boolean = true,
+    onShowVehicleIconChange: (Boolean) -> Unit,
+    onNavigateToBackup: () -> Unit // NEW: Added navigation parameter
 ) {
     val uriHandler = LocalUriHandler.current
     var showDonatePopup by remember { mutableStateOf(false) }
@@ -145,18 +146,17 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
-     topBar = {
+        topBar = {
             TopAppBar(
                 title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
-                // FIX: Force transparency when edge-to-edge is enabled
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background,
                     scrolledContainerColor = if (fullScreenStatusBar) Color.Transparent else MaterialTheme.colorScheme.background
                 )
             )
         }
-) { paddingValues -> 
+    ) { paddingValues -> 
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -181,13 +181,13 @@ fun SettingsScreen(
             // ── Preferences ──────────────────────────────────────────────────
             SectionLabel("Preferences")
 
-    PreferencesSection(
+            PreferencesSection(
                 activeVehicle = uiState.activeVehicle,
                 navBarStyle = uiState.navBarStyle,
                 fullScreenStatusBar = uiState.fullScreenStatusBar,
                 autoHideTitleBar = uiState.autoHideTitleBar,
                 appThemeMode = uiState.appThemeMode,
-                showVehicleIcon = showVehicleIcon, // NEW
+                showVehicleIcon = showVehicleIcon,
                 onChangeCurrency = {
                     uiState.activeVehicle?.let { viewModel.openCurrencyEdit(it) }
                 },
@@ -195,7 +195,7 @@ fun SettingsScreen(
                 onFullScreenStatusBarChange = { viewModel.setFullScreenStatusBar(it) },
                 onAutoHideTitleBarChange = { viewModel.setAutoHideTitleBar(it) },
                 onAppThemeModeChange = { viewModel.setAppThemeMode(it) },
-                onShowVehicleIconChange = onShowVehicleIconChange // NEW
+                onShowVehicleIconChange = onShowVehicleIconChange
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -212,6 +212,18 @@ fun SettingsScreen(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column {
+                    // NEW: Backup & Sync integration
+                    PreferenceRow(
+                        icon = Icons.Default.CloudUpload,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        title = "Backup & Sync",
+                        subtitle = "Securely backup your database to Google Drive",
+                        onClick = onNavigateToBackup
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
                     PreferenceRow(
                         icon = Icons.Default.FileDownload,
                         iconColor = MaterialTheme.colorScheme.tertiary,
@@ -251,7 +263,7 @@ fun SettingsScreen(
                         icon = Icons.Default.Info,
                         iconColor = MaterialTheme.colorScheme.primary,
                         title = "About Odo",
-                        subtitle = "Version 1.0.2 • Built by Max",
+                        subtitle = "Version 1.0.3 • Built by Max",
                         onClick = { /* Expandable or dialog if needed later */ }
                     )
                     HorizontalDivider(
