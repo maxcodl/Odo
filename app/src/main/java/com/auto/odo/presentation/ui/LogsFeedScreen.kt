@@ -45,7 +45,7 @@ data class LogDetailPayload(
 fun LogsFeedScreen(
     viewModel: LogsFeedViewModel,
     autoHideTitleBar: Boolean = true,
-    fullScreenStatusBar: Boolean = false
+    fullScreenStatusBar: Boolean = false,
     onNavigateToEdit: (LogItem) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -69,7 +69,8 @@ fun LogsFeedContent(
     fullScreenStatusBar: Boolean = false,
     onFilterSelected: (String?) -> Unit = {},
     onDeleteLog: (LogItem) -> Unit = {},
-    onUndoDelete: () -> Unit = {}
+    onUndoDelete: () -> Unit = {},
+    onNavigateToEdit: (LogItem) -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())

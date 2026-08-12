@@ -40,6 +40,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.auto.odo.domain.usecase.LogItem
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Home)
@@ -230,6 +231,9 @@ Scaffold(
             }
             composable(
                 route = Screen.AddService.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -246,6 +250,9 @@ Scaffold(
             }
             composable(
                 route = Screen.AddExpense.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -262,6 +269,9 @@ Scaffold(
             }
             composable(
                 route = Screen.AddTrip.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
