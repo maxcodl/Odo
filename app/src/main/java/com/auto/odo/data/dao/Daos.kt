@@ -73,6 +73,12 @@ interface FuelLogDao {
 
     @Query("SELECT MAX(quantity) FROM fuel_logs WHERE vehicleId = :vehicleId")
     suspend fun getMaxFillUpVolume(vehicleId: Long): Double?
+    
+    @Query("SELECT * FROM fuel_logs WHERE id = :id LIMIT 1")
+    suspend fun getFuelLogById(id: Long): FuelLogEntity?
+
+    @Update
+    suspend fun updateFuelLog(log: FuelLogEntity)
 
     // Grouping by Month-Year for Time-Series Charts
     @Query("""
@@ -94,11 +100,11 @@ interface FuelLogDao {
     @Delete
     suspend fun deleteFuelLog(log: FuelLogEntity)
 
-    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
+    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): FuelLogEntity?
 
-    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
+    @Query("SELECT * FROM fuel_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): FuelLogEntity?
 
     @Query("SELECT * FROM fuel_logs ORDER BY date ASC")
     suspend fun getAllFuelLogs(): List<FuelLogEntity>
@@ -114,6 +120,13 @@ interface ServiceLogDao {
 
     @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getServiceCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
+
+
+    @Query("SELECT * FROM service_logs WHERE id = :id LIMIT 1")
+    suspend fun getServiceLogById(id: Long): ServiceLogEntity?
+
+    @Update
+    suspend fun updateServiceLog(log: ServiceLogEntity)
 
     // --- ANALYTICS QUERIES (PHASE 1) ---
     @Query("SELECT SUM(totalCost) FROM service_logs WHERE vehicleId = :vehicleId")
@@ -141,11 +154,11 @@ interface ServiceLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<ServiceLogEntity>): List<Long>
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date < :date OR (date == :date AND odometer <= :odo)) ORDER BY date DESC, odometer DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): ServiceLogEntity?
 
-    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
+    @Query("SELECT * FROM service_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date > :date OR (date == :date AND odometer >= :odo)) ORDER BY date ASC, odometer ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): ServiceLogEntity?
 }
 
 @Dao
@@ -155,6 +168,12 @@ interface ExpenseLogDao {
 
     @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId AND date >= :sinceDate")
     fun getExpenseCostSumSince(vehicleId: Long, sinceDate: Long): Flow<Double?>
+
+    @Query("SELECT * FROM expense_logs WHERE id = :id LIMIT 1")
+    suspend fun getExpenseLogById(id: Long): ExpenseLogEntity?
+
+    @Update
+    suspend fun updateExpenseLog(log: ExpenseLogEntity)
 
     // --- ANALYTICS QUERIES (PHASE 1) ---
     @Query("SELECT SUM(totalCost) FROM expense_logs WHERE vehicleId = :vehicleId")
@@ -191,6 +210,12 @@ interface TripLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTripLog(log: TripLogEntity): Long
 
+    @Query("SELECT * FROM trip_logs WHERE id = :id LIMIT 1")
+    suspend fun getTripLogById(id: Long): TripLogEntity?
+
+    @Update
+    suspend fun updateTripLog(log: TripLogEntity)
+
     @Delete
     suspend fun deleteTripLog(log: TripLogEntity)
 
@@ -200,9 +225,9 @@ interface TripLogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<TripLogEntity>): List<Long>
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND (date < :date OR (date == :date AND endOdo <= :odo)) ORDER BY date DESC, endOdo DESC LIMIT 1")
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date < :date OR (date == :date AND endOdo <= :odo)) ORDER BY date DESC, endOdo DESC LIMIT 1")
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): TripLogEntity?
 
-    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND (date > :date OR (date == :date AND startOdo >= :odo)) ORDER BY date ASC, startOdo ASC LIMIT 1")
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
+    @Query("SELECT * FROM trip_logs WHERE vehicleId = :vehicleId AND id != :excludeId AND (date > :date OR (date == :date AND startOdo >= :odo)) ORDER BY date ASC, startOdo ASC LIMIT 1")
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): TripLogEntity?
 }

@@ -200,19 +200,24 @@ class ValidateOdometerUseCase @Inject constructor(
     private val serviceRepo: ServiceLogRepository,
     private val tripRepo: TripLogRepository
 ) {
-    suspend operator fun invoke(vehicleId: Long, date: Long, odometer: Double): OdoValidationResult {
-        val fuelBefore = fuelRepo.getClosestLogBefore(vehicleId, date, odometer)?.odometer ?: 0.0
-        val serviceBefore = serviceRepo.getClosestLogBefore(vehicleId, date, odometer)?.odometer ?: 0.0
-        val tripBefore = tripRepo.getClosestLogBefore(vehicleId, date, odometer)?.endOdo ?: 0.0
+    suspend operator fun invoke(
+        vehicleId: Long,
+        date: Long,
+        odometer: Double,
+        excludeLogId: Long = -1L
+    ): OdoValidationResult {
+        val fuelBefore = fuelRepo.getClosestLogBefore(vehicleId, date, odometer, excludeLogId)?.odometer ?: 0.0
+        val serviceBefore = serviceRepo.getClosestLogBefore(vehicleId, date, odometer, excludeLogId)?.odometer ?: 0.0
+        val tripBefore = tripRepo.getClosestLogBefore(vehicleId, date, odometer, excludeLogId)?.endOdo ?: 0.0
 
         val maxBefore = maxOf(fuelBefore, serviceBefore, tripBefore)
         if (maxBefore > 0.0 && odometer < maxBefore) {
             return OdoValidationResult.InvalidBefore(maxBefore)
         }
 
-        val fuelAfter = fuelRepo.getClosestLogAfter(vehicleId, date, odometer)?.odometer
-        val serviceAfter = serviceRepo.getClosestLogAfter(vehicleId, date, odometer)?.odometer
-        val tripAfter = tripRepo.getClosestLogAfter(vehicleId, date, odometer)?.startOdo
+        val fuelAfter = fuelRepo.getClosestLogAfter(vehicleId, date, odometer, excludeLogId)?.odometer
+        val serviceAfter = serviceRepo.getClosestLogAfter(vehicleId, date, odometer, excludeLogId)?.odometer
+        val tripAfter = tripRepo.getClosestLogAfter(vehicleId, date, odometer, excludeLogId)?.startOdo
 
         val limitsAfter = listOfNotNull(fuelAfter, serviceAfter, tripAfter)
         if (limitsAfter.isNotEmpty()) {
@@ -221,7 +226,6 @@ class ValidateOdometerUseCase @Inject constructor(
                 return OdoValidationResult.InvalidAfter(minAfter)
             }
         }
-
         return OdoValidationResult.Valid
     }
 }

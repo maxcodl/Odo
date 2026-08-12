@@ -46,6 +46,7 @@ fun LogsFeedScreen(
     viewModel: LogsFeedViewModel,
     autoHideTitleBar: Boolean = true,
     fullScreenStatusBar: Boolean = false
+    onNavigateToEdit: (LogItem) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     
@@ -55,7 +56,8 @@ fun LogsFeedScreen(
         fullScreenStatusBar = fullScreenStatusBar,
         onFilterSelected = viewModel::setFilter,
         onDeleteLog = viewModel::deleteLog,
-        onUndoDelete = viewModel::undoDelete
+        onUndoDelete = viewModel::undoDelete,
+        onNavigateToEdit = onNavigateToEdit
     )
 }
 
@@ -266,8 +268,9 @@ fun LogsFeedContent(
                         onDeleteLog(log)
                         selectedDetailPayload = null
                     },
-                    onEdit = { 
-                        // TODO: Navigate to Edit Screen when it is built
+                    onEdit = { log -> 
+                        selectedDetailPayload = null
+                        onNavigateToEdit(log)
                     }
                 )
             }

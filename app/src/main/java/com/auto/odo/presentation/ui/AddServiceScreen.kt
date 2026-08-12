@@ -83,7 +83,7 @@ fun AddServiceScreenContent(
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Log Service", fontWeight = FontWeight.Bold) },
+                title = { Text(if (uiState.isEditMode) "Edit Service" else "Log Service", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

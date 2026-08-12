@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.ui
 
+
 import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.presentation.viewmodel.BackupViewModel
@@ -44,6 +46,14 @@ fun BackupScreen(
             .build()
         GoogleSignIn.getClient(context, gso)
     }
+
+    val csvPickerLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetContent()
+        ) { uri ->
+            uri?.let { viewModel.importCsv(it) }
+        }
+
+
 
     var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
     var showBackupDialog by remember { mutableStateOf(false) }
@@ -118,6 +128,53 @@ if (showBackupDialog) {
         tonalElevation = 6.dp
     )
 }
+
+    var showExportDialog by remember { mutableStateOf(false) }
+        var selectedExportType by remember { mutableStateOf("") }
+
+        val csvExportLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.CreateDocument("text/csv")
+        ) { uri ->
+            uri?.let { viewModel.exportCsv(it, selectedExportType) }
+        }
+
+    if (showExportDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportDialog = false },
+            title = { Text("What to export?") },
+            text = {
+                Column {
+                    TextButton(onClick = { 
+                        selectedExportType = "vehicles"
+                        showExportDialog = false
+                        csvExportLauncher.launch("vehicles_export.csv") 
+                    }) { Text("Vehicles") }
+                    
+                    TextButton(onClick = { 
+                        selectedExportType = "services"
+                        showExportDialog = false
+                        csvExportLauncher.launch("services_export.csv") 
+                    }) { Text("Service Logs") }
+
+                    TextButton(onClick = { 
+                        selectedExportType = "fuel_entries"
+                        showExportDialog = false
+                        csvExportLauncher.launch("fuel_export.csv") 
+                    }) { Text("Fuel Entries") }
+                    
+                    TextButton(onClick = { 
+                        selectedExportType = "trips"
+                        showExportDialog = false
+                        csvExportLauncher.launch("trips_export.csv") 
+                    }) { Text("Trips") }
+
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showExportDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -209,7 +266,7 @@ if (showBackupDialog) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ── Restore Latest Button ──
+// ── Restore Latest Button ──
             Button(
                 onClick = {
                     val account = GoogleSignIn.getLastSignedInAccount(context)
@@ -226,6 +283,37 @@ if (showBackupDialog) {
             ) {
                 Text("Restore Latest Backup", fontWeight = FontWeight.Bold)
             }
+            
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ── Import CSV Button ──
+            Button(
+                onClick = { csvPickerLauncher.launch("text/*") },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                enabled = !uiState.isBackingUp
+            ) {
+                Text("Import CSV Data", fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+
+            // ── Export CSV Button ──
+                        Button(
+                            onClick = { showExportDialog = true },
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            ),
+                            enabled = !uiState.isBackingUp
+                        ) {
+                            Text("Export CSV Data", fontWeight = FontWeight.Bold)
+                        }
 
             Spacer(modifier = Modifier.height(16.dp))
 

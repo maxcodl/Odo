@@ -15,6 +15,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import androidx.lifecycle.SavedStateHandle
+
 
 @Immutable
 data class AddFillUpUiState(
@@ -31,7 +33,8 @@ data class AddFillUpUiState(
     val lastKnownOdometer: Double = 0.0,
     val odometerError: String? = null,
     val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
+    val saveSuccess: Boolean = false,
+    val isEditMode: Boolean = false
 )
 
 @HiltViewModel
@@ -39,8 +42,12 @@ class AddFillUpViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val fuelRepo: FuelLogRepository,
     private val sessionManager: UserSessionManager,
-    private val validateOdometer: ValidateOdometerUseCase
+    private val validateOdometer: ValidateOdometerUseCase,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private val editId: Long = savedStateHandle.get<Long>("editId") ?: -1L
+    private var originalLog: FuelLogEntity? = null
 
     private val _uiState = MutableStateFlow(AddFillUpUiState())
     val uiState: StateFlow<AddFillUpUiState> = _uiState.asStateFlow()
@@ -52,24 +59,54 @@ class AddFillUpViewModel @Inject constructor(
                 .collectLatest { vehicleId ->
                     if (vehicleId != null) {
                         val vehicle = vehicleRepo.getVehicleById(vehicleId)
-                        val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                        val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
-                        val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
-                            UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
-                        
-                        _uiState.update {
-                            it.copy(
-                                selectedVehicle = vehicle,
-                                lastKnownOdometer = lastOdoDisplay,
-                                // BUG FIX: Formatted the pre-filled string to zero decimals
-                                odometer = if (lastOdoDisplay > 0)
-                                    String.format(java.util.Locale.US, "%.0f", lastOdoDisplay) else ""
-                            )
+
+                        if (editId != -1L) {
+                            // EDIT MODE: load existing entry, don't touch odometer prefill logic
+                            val existing = fuelRepo.getFuelLogById(editId)
+                            if (existing != null) {
+                                originalLog = existing
+                                val distDisplay = if (vehicle?.distanceUnit == "miles")
+                                    UnitConverter.kmToMiles(existing.odometer) else existing.odometer
+                                val qtyDisplay = if (vehicle?.fuelUnit == "Gallons")
+                                    UnitConverter.litersToGallons(existing.quantity) else existing.quantity
+
+                                _uiState.update {
+                                    it.copy(
+                                        selectedVehicle = vehicle,
+                                        isEditMode = true,
+                                        date = existing.date,
+                                        odometer = String.format(java.util.Locale.US, "%.0f", distDisplay),
+                                        quantity = String.format(java.util.Locale.US, "%.2f", qtyDisplay),
+                                        pricePerUnit = String.format(java.util.Locale.US, "%.2f", existing.pricePerUnit),
+                                        totalCost = String.format(java.util.Locale.US, "%.2f", existing.totalCost),
+                                        isPartialTank = existing.isPartialTank,
+                                        stationName = existing.stationName ?: "",
+                                        notes = existing.notes ?: "",
+                                        receiptPath = existing.receiptPath
+                                    )
+                                }
+                            }
+                        } else {
+                            // CREATE MODE: existing prefill behavior
+                            val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+                            val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                            val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
+                                UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
+
+                            _uiState.update {
+                                it.copy(
+                                    selectedVehicle = vehicle,
+                                    lastKnownOdometer = lastOdoDisplay,
+                                    odometer = if (lastOdoDisplay > 0)
+                                        String.format(java.util.Locale.US, "%.0f", lastOdoDisplay) else ""
+                                )
+                            }
                         }
                     }
                 }
         }
     }
+
 
     // NEW: Clears everything except vehicle data and odometer
     fun clearForm() {
@@ -220,66 +257,72 @@ class AddFillUpViewModel @Inject constructor(
     }
 
     fun saveFillUp() {
-        val state = _uiState.value
-        val vehicle = state.selectedVehicle ?: return
-        val odoVal = state.odometer.replace(',', '.').toDoubleOrNull()
-        val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull()
-        val ppuVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull()
-        val costVal = state.totalCost.replace(',', '.').toDoubleOrNull()
+            val state = _uiState.value
+            val vehicle = state.selectedVehicle ?: return
+            val odoVal = state.odometer.replace(',', '.').toDoubleOrNull()
+            val qtyVal = state.quantity.replace(',', '.').toDoubleOrNull()
+            val ppuVal = state.pricePerUnit.replace(',', '.').toDoubleOrNull()
+            val costVal = state.totalCost.replace(',', '.').toDoubleOrNull()
 
-        if (odoVal == null || qtyVal == null || ppuVal == null || costVal == null) {
-            _uiState.update { it.copy(odometerError = "Please fill in all mandatory numerical fields correctly") }
-            return
-        }
-
-        if (odoVal < 0 || qtyVal <= 0 || ppuVal <= 0 || costVal <= 0) {
-            _uiState.update { it.copy(odometerError = "Odometer must be non-negative. Quantity, Price, and Cost must be greater than zero.") }
-            return
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true) }
-
-            val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
-            val validation = validateOdometer(vehicle.id, state.date, standardOdo)
-            if (validation !is OdoValidationResult.Valid) {
-                _uiState.update {
-                    it.copy(
-                        isSaving = false,
-                        odometerError = when (validation) {
-                            is OdoValidationResult.InvalidBefore -> {
-                                val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
-                                "Must be >= previous odometer (%.0f ${vehicle.distanceUnit})".format(lim)
-                            }
-                            is OdoValidationResult.InvalidAfter -> {
-                                val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
-                                "Must be <= subsequent odometer (%.0f ${vehicle.distanceUnit})".format(lim)
-                            }
-                            else -> "Invalid odometer reading"
-                        }
-                    )
-                }
-                return@launch
+            if (odoVal == null || qtyVal == null || ppuVal == null || costVal == null) {
+                _uiState.update { it.copy(odometerError = "Please fill in all mandatory numerical fields correctly") }
+                return
+            }
+            if (odoVal < 0 || qtyVal <= 0 || ppuVal <= 0 || costVal <= 0) {
+                _uiState.update { it.copy(odometerError = "Odometer must be non-negative. Quantity, Price, and Cost must be greater than zero.") }
+                return
             }
 
-            val standardQty = if (vehicle.fuelUnit == "Gallons") UnitConverter.gallonsToLiters(qtyVal) else qtyVal
-            val standardPpu = if (vehicle.fuelUnit == "Gallons") costVal / standardQty else ppuVal
+            viewModelScope.launch {
+                _uiState.update { it.copy(isSaving = true) }
 
-            val entity = FuelLogEntity(
-                vehicleId = vehicle.id,
-                date = state.date,
-                odometer = standardOdo,
-                quantity = standardQty,
-                pricePerUnit = standardPpu,
-                totalCost = costVal,
-                isPartialTank = state.isPartialTank,
-                stationName = state.stationName.ifBlank { null },
-                notes = state.notes.ifBlank { null },
-                receiptPath = state.receiptPath
-            )
+                val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
+                // NOTE: when editing, exclude this log's own id from the chronological check
+                val validation = validateOdometer(vehicle.id, state.date, standardOdo, originalLog?.id ?: -1L)
+                if (validation !is OdoValidationResult.Valid) {
+                    _uiState.update {
+                        it.copy(
+                            isSaving = false,
+                            odometerError = when (validation) {
+                                is OdoValidationResult.InvalidBefore -> {
+                                    val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
+                                    "Must be >= previous odometer (%.0f ${vehicle.distanceUnit})".format(lim)
+                                }
+                                is OdoValidationResult.InvalidAfter -> {
+                                    val lim = if (vehicle.distanceUnit == "miles") UnitConverter.kmToMiles(validation.limit) else validation.limit
+                                    "Must be <= subsequent odometer (%.0f ${vehicle.distanceUnit})".format(lim)
+                                }
+                                else -> "Invalid odometer reading"
+                            }
+                        )
+                    }
+                    return@launch
+                }
 
-            fuelRepo.insertFuelLog(entity)
-            _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
+                val standardQty = if (vehicle.fuelUnit == "Gallons") UnitConverter.gallonsToLiters(qtyVal) else qtyVal
+                val standardPpu = if (vehicle.fuelUnit == "Gallons") costVal / standardQty else ppuVal
+
+                val entity = FuelLogEntity(
+                    id = originalLog?.id ?: 0L,
+                    vehicleId = vehicle.id,
+                    date = state.date,
+                    odometer = standardOdo,
+                    quantity = standardQty,
+                    pricePerUnit = standardPpu,
+                    totalCost = costVal,
+                    isPartialTank = state.isPartialTank,
+                    stationName = state.stationName.ifBlank { null },
+                    notes = state.notes.ifBlank { null },
+                    receiptPath = state.receiptPath
+                )
+
+                if (originalLog != null) {
+                    fuelRepo.updateFuelLog(entity)
+                } else {
+                    fuelRepo.insertFuelLog(entity)
+                }
+                                _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
+            }
         }
     }
 }

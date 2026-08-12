@@ -38,16 +38,27 @@ import com.auto.odo.presentation.ui.*
 import com.auto.odo.presentation.viewmodel.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Home)
     object Logs : Screen("logs", "Logs", Icons.Default.List)
     object Analytics : Screen("analytics", "Stats", Icons.Default.Speed)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
-    object AddFillUp : Screen("add_fillup", "Add Fillup", null)
-    object AddService : Screen("add_service", "Add Service", null)
-    object AddExpense : Screen("add_expense", "Add Expense", null)
-    object AddTrip : Screen("add_trip", "Add Trip", null)
+    
+    object AddFillUp : Screen("add_fillup?editId={editId}", "Add Fillup", null) {
+        fun edit(id: Long) = "add_fillup?editId=$id"
+    }
+    object AddService : Screen("add_service?editId={editId}", "Add Service", null) {
+        fun edit(id: Long) = "add_service?editId=$id"
+    }
+    object AddExpense : Screen("add_expense?editId={editId}", "Add Expense", null) {
+        fun edit(id: Long) = "add_expense?editId=$id"
+    }
+    object AddTrip : Screen("add_trip?editId={editId}", "Add Trip", null) {
+        fun edit(id: Long) = "add_trip?editId=$id"
+    }
     object UpdateOdometer : Screen("update_odo", "Update Odometer", null)
     object Backup : Screen("backup", "Backup & Sync", null) // NEW: Added Backup Screen route
 }
@@ -162,7 +173,16 @@ Scaffold(
                 LogsFeedScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
-                    fullScreenStatusBar = fullScreenStatusBar
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateToEdit = { log ->
+                        val route = when (log) {
+                            is LogItem.Fuel -> Screen.AddFillUp.edit(log.id)
+                            is LogItem.Service -> Screen.AddService.edit(log.id)
+                            is LogItem.Expense -> Screen.AddExpense.edit(log.id)
+                            is LogItem.Trip -> Screen.AddTrip.edit(log.id)
+                        }
+                        navController.navigate(route)
+                    }
                 )
             }
 
@@ -191,6 +211,9 @@ Scaffold(
 
             composable(
                 route = Screen.AddFillUp.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },

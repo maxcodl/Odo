@@ -99,7 +99,7 @@ fun AddFillUpContent(
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Log Fill-Up", fontWeight = FontWeight.Bold) },
+                title = { Text(if (uiState.isEditMode) "Edit Fill-Up" else "Log Fill-Up", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

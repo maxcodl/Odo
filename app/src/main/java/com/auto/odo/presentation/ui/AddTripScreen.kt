@@ -77,7 +77,7 @@ fun AddTripContent(
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Log Trip", fontWeight = FontWeight.Bold) },
+                title = { Text(if (uiState.isEditMode) "Edit Trip" else "Log Trip", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

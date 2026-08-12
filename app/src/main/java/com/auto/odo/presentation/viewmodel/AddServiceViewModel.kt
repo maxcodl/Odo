@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
@@ -26,7 +27,8 @@ data class AddServiceUiState(
     val lastKnownOdometer: Double = 0.0,
     val odometerError: String? = null,
     val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
+    val saveSuccess: Boolean = false,
+    val isEditMode: Boolean = false
 )
 
 @HiltViewModel
@@ -35,32 +37,61 @@ class AddServiceViewModel @Inject constructor(
     private val fuelRepo: FuelLogRepository,
     private val serviceRepo: ServiceLogRepository,
     private val sessionManager: UserSessionManager,
-    private val validateOdometer: ValidateOdometerUseCase
+    private val validateOdometer: ValidateOdometerUseCase,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private val editId: Long = savedStateHandle.get<Long>("editId") ?: -1L
+    private var originalLog: ServiceLogEntity? = null
 
     private val _uiState = MutableStateFlow(AddServiceUiState())
     val uiState: StateFlow<AddServiceUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            sessionManager.currentVehicleId.collectLatest { vehicleId ->
-                if (vehicleId != null) {
-                    val vehicle = vehicleRepo.getVehicleById(vehicleId)
-                    val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                    // lastOdo stored in km — convert to display unit for UI
-                    val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
-                    val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
-                        UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
-                    _uiState.update {
-                        it.copy(
-                            selectedVehicle = vehicle,
-                            lastKnownOdometer = lastOdoDisplay,
-                            odometer = if (lastOdoDisplay > 0)
-                                String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
-                        )
+            sessionManager.currentVehicleId
+                .distinctUntilChanged()
+                .collectLatest { vehicleId ->
+                    if (vehicleId != null) {
+                        val vehicle = vehicleRepo.getVehicleById(vehicleId)
+
+                        if (editId != -1L) {
+                            // EDIT MODE
+                            val existing = serviceRepo.getServiceLogById(editId)
+                            if (existing != null) {
+                                originalLog = existing
+                                val distDisplay = if (vehicle?.distanceUnit == "miles")
+                                    UnitConverter.kmToMiles(existing.odometer) else existing.odometer
+
+                                _uiState.update {
+                                    it.copy(
+                                        selectedVehicle = vehicle,
+                                        isEditMode = true,
+                                        date = existing.date,
+                                        odometer = String.format(java.util.Locale.US, "%.1f", distDisplay),
+                                        serviceType = existing.serviceType,
+                                        totalCost = String.format(java.util.Locale.US, "%.2f", existing.totalCost),
+                                        notes = existing.notes ?: ""
+                                    )
+                                }
+                            }
+                        } else {
+                            // CREATE MODE (unchanged)
+                            val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+                            val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                            val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
+                                UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
+                            _uiState.update {
+                                it.copy(
+                                    selectedVehicle = vehicle,
+                                    lastKnownOdometer = lastOdoDisplay,
+                                    odometer = if (lastOdoDisplay > 0)
+                                        String.format(java.util.Locale.US, "%.1f", lastOdoDisplay) else ""
+                                )
+                            }
+                        }
                     }
                 }
-            }
         }
     }
 
@@ -91,7 +122,7 @@ class AddServiceViewModel @Inject constructor(
         val odoDisplayVal = _uiState.value.odometer.replace(',', '.').toDoubleOrNull() ?: return
         val odoKm = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoDisplayVal) else odoDisplayVal
         viewModelScope.launch {
-            val result = validateOdometer(vehicle.id, _uiState.value.date, odoKm)
+            val result = validateOdometer(vehicle.id, _uiState.value.date, odoKm, originalLog?.id ?: -1L)
             _uiState.update {
                 when (result) {
                     is OdoValidationResult.Valid -> it.copy(odometerError = null)
@@ -129,7 +160,7 @@ class AddServiceViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true) }
 
             val standardOdo = if (vehicle.distanceUnit == "miles") UnitConverter.milesToKm(odoVal) else odoVal
-            val validation = validateOdometer(vehicle.id, state.date, standardOdo)
+            val validation = validateOdometer(vehicle.id, state.date, standardOdo, originalLog?.id ?: -1L)
             if (validation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
@@ -151,6 +182,7 @@ class AddServiceViewModel @Inject constructor(
             }
 
             val entity = ServiceLogEntity(
+                id = originalLog?.id ?: 0L,
                 vehicleId = vehicle.id,
                 date = state.date,
                 odometer = standardOdo,
@@ -159,7 +191,11 @@ class AddServiceViewModel @Inject constructor(
                 notes = state.notes.ifBlank { null }
             )
 
-            serviceRepo.insertServiceLog(entity)
+            if (originalLog != null) {
+                serviceRepo.updateServiceLog(entity)
+            } else {
+                serviceRepo.insertServiceLog(entity)
+            }
             _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
         }
     }
