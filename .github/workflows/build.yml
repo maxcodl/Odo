@@ -11,12 +11,14 @@ permissions:
 
 jobs:
   build:
-    name: Build stable release APK
+    name: Build stable release APK & Bundle
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetches all history so GitHub can generate an accurate changelog
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,34 +42,41 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/odo-release.jks
 
-      - name: Build release APK (signed)
+      - name: Build release APK & Bundle (signed)
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/app/odo-release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        # Added :app:bundleRelease here to generate the .aab along with the .apk
+        run: ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon
 
-      - name: Rename APK
+      - name: Rename Build Artifacts
         run: |
           TAG=${GITHUB_REF_NAME:-stable}
-          cp app/build/outputs/apk/release/app-release.apk Odo-${TAG}-release.apk
+          # Fixed line 52 to use wildcards to avoid hardcoded name mismatches
+          cp app/build/outputs/apk/release/*.apk Odo-${TAG}-release.apk
+          cp app/build/outputs/bundle/release/*.aab Odo-${TAG}-release.aab
 
-      - name: Upload release APK artifact
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Odo-release
-          path: Odo-*-release.apk
+          name: Odo-release-artifacts
+          path: |
+            Odo-*-release.apk
+            Odo-*-release.aab
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           name: Odo ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          generate_release_notes: true # Auto-generates the changelog based on commits
           files: |
             Odo-*-release.apk
+            Odo-*-release.aab
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
