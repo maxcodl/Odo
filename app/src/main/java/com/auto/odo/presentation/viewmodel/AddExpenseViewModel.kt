@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UserSessionManager
@@ -20,15 +21,20 @@ data class AddExpenseUiState(
     val notes: String = "",
     val costError: String? = null,
     val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
+    val saveSuccess: Boolean = false,
+    val isEditMode: Boolean = false
 )
 
 @HiltViewModel
 class AddExpenseViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val expenseRepo: ExpenseLogRepository,
-    private val sessionManager: UserSessionManager
+    private val sessionManager: UserSessionManager,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private val editId: Long = savedStateHandle.get<Long>("editId") ?: -1L
+    private var originalLog: ExpenseLogEntity? = null
 
     private val _uiState = MutableStateFlow(AddExpenseUiState())
     val uiState: StateFlow<AddExpenseUiState> = _uiState.asStateFlow()
@@ -38,8 +44,26 @@ class AddExpenseViewModel @Inject constructor(
             sessionManager.currentVehicleId.collectLatest { vehicleId ->
                 if (vehicleId != null) {
                     val vehicle = vehicleRepo.getVehicleById(vehicleId)
-                    _uiState.update {
-                        it.copy(selectedVehicle = vehicle)
+
+                    if (editId != -1L) {
+                        // EDIT MODE
+                        val existing = expenseRepo.getExpenseLogById(editId)
+                        if (existing != null) {
+                            originalLog = existing
+                            _uiState.update {
+                                it.copy(
+                                    selectedVehicle = vehicle,
+                                    isEditMode = true,
+                                    date = existing.date,
+                                    category = existing.category,
+                                    totalCost = String.format(java.util.Locale.US, "%.2f", existing.totalCost),
+                                    notes = existing.notes ?: ""
+                                )
+                            }
+                        }
+                    } else {
+                        // CREATE MODE (unchanged)
+                        _uiState.update { it.copy(selectedVehicle = vehicle) }
                     }
                 }
             }
@@ -82,6 +106,7 @@ class AddExpenseViewModel @Inject constructor(
             _uiState.update { it.copy(isSaving = true) }
 
             val entity = ExpenseLogEntity(
+                id = originalLog?.id ?: 0L,
                 vehicleId = vehicle.id,
                 date = state.date,
                 category = categoryVal,
@@ -89,7 +114,11 @@ class AddExpenseViewModel @Inject constructor(
                 notes = state.notes.ifBlank { null }
             )
 
-            expenseRepo.insertExpenseLog(entity)
+            if (originalLog != null) {
+                expenseRepo.updateExpenseLog(entity)
+            } else {
+                expenseRepo.insertExpenseLog(entity)
+            }
             _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
         }
     }

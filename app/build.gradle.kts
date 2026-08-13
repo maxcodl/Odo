@@ -18,8 +18,8 @@ android {
         applicationId = "com.auto.odo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.3" // Updated to match your new release version
     }
 
     // Load local.properties for local release builds safely
@@ -45,7 +45,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = true 
+            isMinifyEnabled = false 
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
         }
@@ -63,9 +63,21 @@ android {
         shaders = false
     }
 
+    // FIX: Added the excludes to stop Google API META-INF collisions
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/license.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "META-INF/notice.txt",
+                "META-INF/ASL2.0",
+                "META-INF/*.kotlin_module"
+            )
         }
     }
 }
@@ -78,6 +90,14 @@ dependencies {
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
     androidTestImplementation(composeBom)
+
+    // Google Drive & Auth
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+    implementation("com.google.api-client:google-api-client-android:2.2.0")
+    implementation("com.google.apis:google-api-services-drive:v3-rev20240123-2.0.0")
+    
+    // WorkManager for background execution
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)

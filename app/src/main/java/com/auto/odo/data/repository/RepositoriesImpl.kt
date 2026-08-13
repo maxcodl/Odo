@@ -33,10 +33,14 @@ class FuelLogRepositoryImpl @Inject constructor(
     override fun getFillUpCountSince(vehicleId: Long, sinceDate: Long): Flow<Int> = dao.getFillUpCountSince(vehicleId, sinceDate)
     override suspend fun insertFuelLog(log: FuelLogEntity): Long = dao.insertFuelLog(log)
     override suspend fun deleteFuelLog(log: FuelLogEntity) = dao.deleteFuelLog(log)
-    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity? = dao.getClosestLogBefore(vehicleId, date, odo)
-    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): FuelLogEntity? = dao.getClosestLogAfter(vehicleId, date, odo)
     override suspend fun getAllFuelLogs(): List<FuelLogEntity> = dao.getAllFuelLogs()
     override suspend fun insertAllFuelLogs(logs: List<FuelLogEntity>): List<Long> = dao.insertAll(logs)
+    override suspend fun getFuelLogById(id: Long): FuelLogEntity? = dao.getFuelLogById(id)
+    override suspend fun updateFuelLog(log: FuelLogEntity) = dao.updateFuelLog(log)
+    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long): FuelLogEntity? =
+    dao.getClosestLogBefore(vehicleId, date, odo, excludeId)
+    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long): FuelLogEntity? =
+    dao.getClosestLogAfter(vehicleId, date, odo, excludeId)
 }
 
 class ServiceLogRepositoryImpl @Inject constructor(
@@ -48,8 +52,12 @@ class ServiceLogRepositoryImpl @Inject constructor(
     override suspend fun deleteServiceLog(log: ServiceLogEntity) = dao.deleteServiceLog(log)
     override suspend fun getAllServiceLogs(): List<ServiceLogEntity> = dao.getAllServiceLogs()
     override suspend fun insertAllServiceLogs(logs: List<ServiceLogEntity>): List<Long> = dao.insertAll(logs)
-    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity? = dao.getClosestLogBefore(vehicleId, date, odo)
-    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity? = dao.getClosestLogAfter(vehicleId, date, odo)
+    override suspend fun getServiceLogById(id: Long): ServiceLogEntity? = dao.getServiceLogById(id)
+    override suspend fun updateServiceLog(log: ServiceLogEntity) = dao.updateServiceLog(log)
+    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long): ServiceLogEntity? =
+        dao.getClosestLogBefore(vehicleId, date, odo, excludeId)
+    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long): ServiceLogEntity? =
+        dao.getClosestLogAfter(vehicleId, date, odo, excludeId)
 }
 
 class ExpenseLogRepositoryImpl @Inject constructor(
@@ -61,6 +69,9 @@ class ExpenseLogRepositoryImpl @Inject constructor(
     override suspend fun deleteExpenseLog(log: ExpenseLogEntity) = dao.deleteExpenseLog(log)
     override suspend fun getAllExpenseLogs(): List<ExpenseLogEntity> = dao.getAllExpenseLogs()
     override suspend fun insertAllExpenseLogs(logs: List<ExpenseLogEntity>): List<Long> = dao.insertAll(logs)
+    override suspend fun getExpenseLogById(id: Long): ExpenseLogEntity? = dao.getExpenseLogById(id)
+    override suspend fun updateExpenseLog(log: ExpenseLogEntity) = dao.updateExpenseLog(log)
+
 }
 
 class TripLogRepositoryImpl @Inject constructor(
@@ -71,6 +82,10 @@ class TripLogRepositoryImpl @Inject constructor(
     override suspend fun deleteTripLog(log: TripLogEntity) = dao.deleteTripLog(log)
     override suspend fun getAllTripLogs(): List<TripLogEntity> = dao.getAllTripLogs()
     override suspend fun insertAllTripLogs(logs: List<TripLogEntity>): List<Long> = dao.insertAll(logs)
-    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): TripLogEntity? = dao.getClosestLogBefore(vehicleId, date, odo)
-    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): TripLogEntity? = dao.getClosestLogAfter(vehicleId, date, odo)
+    override suspend fun getTripLogById(id: Long): TripLogEntity? = dao.getTripLogById(id)
+    override suspend fun updateTripLog(log: TripLogEntity) = dao.updateTripLog(log)
+    override suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long): TripLogEntity? =
+        dao.getClosestLogBefore(vehicleId, date, odo, excludeId)
+    override suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long): TripLogEntity? =
+        dao.getClosestLogAfter(vehicleId, date, odo, excludeId)
 }

@@ -24,6 +24,9 @@ class UserSessionManager(private val context: Context) {
         private val FULL_SCREEN_STATUS_BAR = booleanPreferencesKey("full_screen_status_bar")
         private val AUTO_HIDE_TITLE_BAR = booleanPreferencesKey("auto_hide_title_bar")
         private val APP_THEME_MODE = stringPreferencesKey("app_theme_mode")
+        
+        // NEW: Key for the vehicle icon toggle
+        private val SHOW_VEHICLE_ICON = booleanPreferencesKey("show_vehicle_icon")
     }
 
     val currentVehicleId: Flow<Long?> = context.dataStore.data.map { preferences ->
@@ -46,6 +49,11 @@ class UserSessionManager(private val context: Context) {
     val appThemeMode: Flow<AppThemeMode> = context.dataStore.data.map { preferences ->
         val modeStr = preferences[APP_THEME_MODE] ?: AppThemeMode.STANDARD.name
         try { AppThemeMode.valueOf(modeStr) } catch (e: Exception) { AppThemeMode.STANDARD }
+    }
+
+    // NEW: Flow to read the icon setting, defaults to true
+    val showVehicleIcon: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[SHOW_VEHICLE_ICON] ?: true
     }
 
     suspend fun setCurrentVehicleId(vehicleId: Long) {
@@ -75,6 +83,13 @@ class UserSessionManager(private val context: Context) {
     suspend fun setAppThemeMode(mode: AppThemeMode) {
         context.dataStore.edit { preferences ->
             preferences[APP_THEME_MODE] = mode.name
+        }
+    }
+
+    // NEW: Suspend function to update the icon setting
+    suspend fun setShowVehicleIcon(show: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[SHOW_VEHICLE_ICON] = show
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.auto.odo.presentation.viewmodel
 
 import androidx.compose.runtime.Immutable
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
@@ -29,7 +30,8 @@ data class AddTripUiState(
     val lastKnownOdometer: Double = 0.0,
     val odoError: String? = null,
     val isSaving: Boolean = false,
-    val saveSuccess: Boolean = false
+    val saveSuccess: Boolean = false,
+    val isEditMode: Boolean = false
 )
 
 @HiltViewModel
@@ -38,8 +40,12 @@ class AddTripViewModel @Inject constructor(
     private val fuelRepo: FuelLogRepository,
     private val tripRepo: TripLogRepository,
     private val sessionManager: UserSessionManager,
-    private val validateOdometer: ValidateOdometerUseCase
+    private val validateOdometer: ValidateOdometerUseCase,
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
+
+    private val editId: Long = savedStateHandle.get<Long>("editId") ?: -1L
+    private var originalLog: TripLogEntity? = null
 
     private val _uiState = MutableStateFlow(AddTripUiState())
     val uiState: StateFlow<AddTripUiState> = _uiState.asStateFlow()
@@ -51,23 +57,44 @@ class AddTripViewModel @Inject constructor(
                 .collectLatest { vehicleId ->
                     if (vehicleId != null) {
                         val vehicle = vehicleRepo.getVehicleById(vehicleId) ?: return@collectLatest
-                        val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
-                        val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
 
-                        val lastOdoDisplay =
-                            if (vehicle.distanceUnit == "miles")
-                                UnitConverter.kmToMiles(lastOdoKm)
-                            else
-                                lastOdoKm
+                        if (editId != -1L) {
+                            // EDIT MODE
+                            val existing = tripRepo.getTripLogById(editId)
+                            if (existing != null) {
+                                originalLog = existing
+                                val startDisplay = fromStoredDistance(existing.startOdo, vehicle)
+                                val endDisplay = fromStoredDistance(existing.endOdo, vehicle)
+                                val diff = if (endDisplay > startDisplay) (endDisplay - startDisplay) else 0.0
 
-                        _uiState.update {
-                            it.copy(
-                                selectedVehicle = vehicle,
-                                lastKnownOdometer = lastOdoDisplay,
-                                startOdo = if (lastOdoDisplay > 0)
-                                    String.format(java.util.Locale.US, "%.1f", lastOdoDisplay)
-                                else ""
-                            )
+                                _uiState.update {
+                                    it.copy(
+                                        selectedVehicle = vehicle,
+                                        isEditMode = true,
+                                        date = existing.date,
+                                        startOdo = String.format(java.util.Locale.US, "%.1f", startDisplay),
+                                        endOdo = String.format(java.util.Locale.US, "%.1f", endDisplay),
+                                        distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
+                                        purpose = existing.purpose,
+                                        notes = existing.notes ?: ""
+                                    )
+                                }
+                            }
+                        } else {
+                            // CREATE MODE (unchanged)
+                            val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
+                            val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                            val lastOdoDisplay = fromStoredDistance(lastOdoKm, vehicle)
+
+                            _uiState.update {
+                                it.copy(
+                                    selectedVehicle = vehicle,
+                                    lastKnownOdometer = lastOdoDisplay,
+                                    startOdo = if (lastOdoDisplay > 0)
+                                        String.format(java.util.Locale.US, "%.1f", lastOdoDisplay)
+                                    else ""
+                                )
+                            }
                         }
                     }
                 }
@@ -125,10 +152,12 @@ class AddTripViewModel @Inject constructor(
             return
         }
 
+        val excludeId = originalLog?.id ?: -1L
+
         viewModelScope.launch {
             if (startVal != null) {
                 val startKm = toStoredDistance(startVal, vehicle)
-                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startKm)
+                val startValidation = validateOdometer(vehicle.id, _uiState.value.date, startKm, excludeId)
                 if (startValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
                         it.copy(odoError = formatTripValidationError("Start", startValidation, vehicle))
@@ -139,7 +168,7 @@ class AddTripViewModel @Inject constructor(
 
             if (endVal != null) {
                 val endKm = toStoredDistance(endVal, vehicle)
-                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endKm)
+                val endValidation = validateOdometer(vehicle.id, _uiState.value.date, endKm, excludeId)
                 if (endValidation !is OdoValidationResult.Valid) {
                     _uiState.update {
                         it.copy(odoError = formatTripValidationError("End", endValidation, vehicle))
@@ -197,9 +226,9 @@ class AddTripViewModel @Inject constructor(
 
             val standardStart = toStoredDistance(startVal, vehicle)
             val standardEnd = toStoredDistance(endVal, vehicle)
+            val excludeId = originalLog?.id ?: -1L
 
-            // Validate start
-            val startValidation = validateOdometer(vehicle.id, state.date, standardStart)
+            val startValidation = validateOdometer(vehicle.id, state.date, standardStart, excludeId)
             if (startValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
@@ -210,8 +239,7 @@ class AddTripViewModel @Inject constructor(
                 return@launch
             }
 
-            // Validate end
-            val endValidation = validateOdometer(vehicle.id, state.date, standardEnd)
+            val endValidation = validateOdometer(vehicle.id, state.date, standardEnd, excludeId)
             if (endValidation !is OdoValidationResult.Valid) {
                 _uiState.update {
                     it.copy(
@@ -223,6 +251,7 @@ class AddTripViewModel @Inject constructor(
             }
 
             val entity = TripLogEntity(
+                id = originalLog?.id ?: 0L,
                 vehicleId = vehicle.id,
                 date = state.date,
                 startOdo = standardStart,
@@ -231,7 +260,11 @@ class AddTripViewModel @Inject constructor(
                 notes = state.notes.ifBlank { null }
             )
 
-            tripRepo.insertTripLog(entity)
+            if (originalLog != null) {
+                tripRepo.updateTripLog(entity)
+            } else {
+                tripRepo.insertTripLog(entity)
+            }
             _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
         }
     }

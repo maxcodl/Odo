@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,7 +56,8 @@ fun AddFillUpScreen(
         onStationNameChanged = viewModel::onStationNameChanged,
         onNotesChanged = viewModel::onNotesChanged,
         onReceiptAttached = viewModel::onReceiptAttached,
-        onSaveFillUp = viewModel::saveFillUp
+        onSaveFillUp = viewModel::saveFillUp,
+        onClearForm = viewModel::clearForm
     )
 }
 
@@ -75,7 +77,8 @@ fun AddFillUpContent(
     onStationNameChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onReceiptAttached: (String?) -> Unit,
-    onSaveFillUp: () -> Unit
+    onSaveFillUp: () -> Unit,
+    onClearForm: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
@@ -96,12 +99,13 @@ fun AddFillUpContent(
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Log Fill-Up", fontWeight = FontWeight.Bold) },
+                title = { Text(if (uiState.isEditMode) "Edit Fill-Up" else "Log Fill-Up", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
+                // Removed the top bar action button to place it closer to the inputs
                 scrollBehavior = if (autoHideTitleBar) scrollBehavior else null,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -151,6 +155,38 @@ fun AddFillUpContent(
                 }
             }
 
+            // 1.5 Header & Clear Button (Noticeable but Minimal)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Fill-Up Details",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                TextButton(
+                    onClick = onClearForm,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh, 
+                        contentDescription = "Clear fields",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Clear Inputs", 
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             // 2. Date Trigger
             val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
@@ -171,7 +207,7 @@ fun AddFillUpContent(
                 value = uiState.odometer,
                 onValueChange = onOdometerChanged,
                 label = { Text("Odometer Reading (${vehicle.distanceUnit})") },
-                placeholder = { Text("Last known: ${uiState.lastKnownOdometer}") },
+                placeholder = { Text("Last known: ${"%.0f".format(uiState.lastKnownOdometer)}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = uiState.odometerError != null,
                 supportingText = {
@@ -325,32 +361,5 @@ fun AddFillUpContent(
         ) {
             DatePicker(state = datePickerState)
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun AddFillUpPreview() {
-    OdoTheme {
-        AddFillUpContent(
-            uiState = AddFillUpUiState(
-                selectedVehicle = VehicleEntity(1, "Toyota Camry", "Car", "Liters", "km", "USD"),
-                odometer = "50000",
-                quantity = "45",
-                pricePerUnit = "1.5",
-                totalCost = "67.5"
-            ),
-            onNavigateBack = {},
-            onDateChanged = {},
-            onOdometerChanged = {},
-            onQuantityChanged = {},
-            onPricePerUnitChanged = {},
-            onTotalCostChanged = {},
-            onPartialTankChanged = {},
-            onStationNameChanged = {},
-            onNotesChanged = {},
-            onReceiptAttached = {},
-            onSaveFillUp = {}
-        )
     }
 }

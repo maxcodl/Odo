@@ -38,28 +38,50 @@ import com.auto.odo.presentation.ui.*
 import com.auto.odo.presentation.viewmodel.*
 import androidx.compose.foundation.isSystemInDarkTheme
 import dagger.hilt.android.AndroidEntryPoint
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import com.auto.odo.domain.usecase.LogItem
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Home)
     object Logs : Screen("logs", "Logs", Icons.Default.List)
     object Analytics : Screen("analytics", "Stats", Icons.Default.Speed)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
-    object AddFillUp : Screen("add_fillup", "Add Fillup", null)
-    object AddService : Screen("add_service", "Add Service", null)
-    object AddExpense : Screen("add_expense", "Add Expense", null)
-    object AddTrip : Screen("add_trip", "Add Trip", null)
+    
+    object AddFillUp : Screen("add_fillup?editId={editId}", "Add Fillup", null) {
+        fun edit(id: Long) = "add_fillup?editId=$id"
+    }
+    object AddService : Screen("add_service?editId={editId}", "Add Service", null) {
+        fun edit(id: Long) = "add_service?editId=$id"
+    }
+    object AddExpense : Screen("add_expense?editId={editId}", "Add Expense", null) {
+        fun edit(id: Long) = "add_expense?editId=$id"
+    }
+    object AddTrip : Screen("add_trip?editId={editId}", "Add Trip", null) {
+        fun edit(id: Long) = "add_trip?editId=$id"
+    }
     object UpdateOdometer : Screen("update_odo", "Update Odometer", null)
+    object Backup : Screen("backup", "Backup & Sync", null) // NEW: Added Backup Screen route
 }
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
+override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = androidx.activity.SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT, 
+                android.graphics.Color.TRANSPARENT
+            ),
+            navigationBarStyle = androidx.activity.SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT, 
+                android.graphics.Color.TRANSPARENT
+            )
+        )
+        
         setContent {
             val mainViewModel: MainViewModel = hiltViewModel()
             
-            // Ensure status bar is always visible and transparent
             val view = LocalView.current
             LaunchedEffect(Unit) {
                 val window = (view.context as Activity).window
@@ -83,22 +105,47 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
     val currentRoute = navBackStackEntry?.destination?.route
     val context = LocalContext.current
     val activity = context as ComponentActivity
-
     val navBarStyle by mainViewModel.navBarStyle.collectAsStateWithLifecycle()
-
+    val showVehicleIcon by mainViewModel.showVehicleIcon.collectAsStateWithLifecycle()
     val isFormRoute = remember(currentRoute) {
         currentRoute == Screen.AddFillUp.route ||
         currentRoute == Screen.AddService.route ||
         currentRoute == Screen.AddExpense.route ||
         currentRoute == Screen.AddTrip.route ||
-        currentRoute == Screen.UpdateOdometer.route
+        currentRoute == Screen.UpdateOdometer.route ||
+        currentRoute == Screen.Backup.route // NEW: Hides nav bar on Backup screen
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent, 
+        bottomBar = {
+            if (!isFormRoute) {
+                FloatingNavigationBar(
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    currentRoute = currentRoute,
+                    style = navBarStyle,
+                    onNavigate = { screen ->
+                        if (currentRoute != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    ) { innerPadding -> 
         NavHost(
             navController = navController,
             startDestination = Screen.Dashboard.route,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize(),
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
@@ -107,11 +154,11 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             composable(Screen.Dashboard.route) {
                 val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
                 val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
-                // Scoping ViewModels to Activity makes tab switching instant as data is preserved
                 DashboardScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar,
+                    showVehicleIcon = showVehicleIcon,
                     onNavigateToAddFillUp = { navController.navigate(Screen.AddFillUp.route) },
                     onNavigateToAddService = { navController.navigate(Screen.AddService.route) },
                     onNavigateToAddExpense = { navController.navigate(Screen.AddExpense.route) },
@@ -127,12 +174,25 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
                 LogsFeedScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
-                    fullScreenStatusBar = fullScreenStatusBar
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    onNavigateToEdit = { log ->
+                        val route = when (log) {
+                            is LogItem.Fuel -> Screen.AddFillUp.edit(log.id)
+                            is LogItem.Service -> Screen.AddService.edit(log.id)
+                            is LogItem.Expense -> Screen.AddExpense.edit(log.id)
+                            is LogItem.Trip -> Screen.AddTrip.edit(log.id)
+                        }
+                        navController.navigate(route)
+                    }
                 )
             }
 
             composable(Screen.Analytics.route) {
-                AnalyticsMockScreen()
+                val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                AnalyticsScreen(
+                    viewModel = hiltViewModel(activity),
+                    fullScreenStatusBar = fullScreenStatusBar
+                )
             }
 
             composable(Screen.Settings.route) {
@@ -141,12 +201,20 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
                 SettingsScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
-                    fullScreenStatusBar = fullScreenStatusBar
+                    fullScreenStatusBar = fullScreenStatusBar,
+                    showVehicleIcon = showVehicleIcon,
+                    onShowVehicleIconChange = { newValue -> 
+                        mainViewModel.setShowVehicleIcon(newValue)
+                    },
+                    onNavigateToBackup = { navController.navigate(Screen.Backup.route) } // Assumes you add this parameter to SettingsScreen
                 )
             }
 
             composable(
                 route = Screen.AddFillUp.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -163,6 +231,9 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             }
             composable(
                 route = Screen.AddService.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -179,6 +250,9 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             }
             composable(
                 route = Screen.AddExpense.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -195,6 +269,9 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
             }
             composable(
                 route = Screen.AddTrip.route,
+                arguments = listOf(navArgument("editId") {
+                    type = NavType.LongType; defaultValue = -1L
+                }),
                 enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
                 exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
                 popEnterTransition = { EnterTransition.None },
@@ -225,28 +302,20 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
                     onNavigateBack = { navController.popBackStack() }
                 )
             }
-        }
 
-        // Global Floating Navigation Bar overlay
-        if (!isFormRoute) {
-            FloatingNavigationBar(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp),
-                currentRoute = currentRoute,
-                style = navBarStyle,
-                onNavigate = { screen ->
-                    if (currentRoute != screen.route) {
-                        navController.navigate(screen.route) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                }
-            )
+            // NEW: Backup Screen Composable
+            composable(
+                route = Screen.Backup.route,
+                enterTransition = { slideInVertically(initialOffsetY = { it }) + fadeIn() },
+                exitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { slideOutVertically(targetOffsetY = { it }) + fadeOut() }
+            ) {
+                BackupScreen(
+                    viewModel = hiltViewModel(),
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
         }
     }
 }
@@ -342,18 +411,6 @@ fun FloatingNavigationBar(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-fun AnalyticsMockScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Timeline, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("Analytics Coming Soon", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text("Deep insights into your vehicle's performance.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -81,7 +81,7 @@ fun AddExpenseScreenContent(
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Log Expense", fontWeight = FontWeight.Bold) },
+                title = { Text(if (uiState.isEditMode) "Edit Expense" else "Log Expense", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 interface VehicleRepository {
     fun getAllVehicles(): Flow<List<VehicleEntity>>
     suspend fun getVehicleById(id: Long): VehicleEntity?
-    fun getVehicleByIdFlow(id: Long): Flow<VehicleEntity?>  // NEW
+    fun getVehicleByIdFlow(id: Long): Flow<VehicleEntity?>
     suspend fun insertVehicle(vehicle: VehicleEntity): Long
     suspend fun updateVehicle(vehicle: VehicleEntity)
     suspend fun deleteVehicle(vehicle: VehicleEntity)
@@ -23,10 +23,12 @@ interface FuelLogRepository {
     fun getFillUpCountSince(vehicleId: Long, sinceDate: Long): Flow<Int>
     suspend fun insertFuelLog(log: FuelLogEntity): Long
     suspend fun deleteFuelLog(log: FuelLogEntity)
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): FuelLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): FuelLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): FuelLogEntity?
     suspend fun getAllFuelLogs(): List<FuelLogEntity>
     suspend fun insertAllFuelLogs(logs: List<FuelLogEntity>): List<Long>
+    suspend fun getFuelLogById(id: Long): FuelLogEntity?
+    suspend fun updateFuelLog(log: FuelLogEntity)
 }
 
 interface ServiceLogRepository {
@@ -36,8 +38,10 @@ interface ServiceLogRepository {
     suspend fun deleteServiceLog(log: ServiceLogEntity)
     suspend fun getAllServiceLogs(): List<ServiceLogEntity>
     suspend fun insertAllServiceLogs(logs: List<ServiceLogEntity>): List<Long>
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): ServiceLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): ServiceLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): ServiceLogEntity?
+    suspend fun getServiceLogById(id: Long): ServiceLogEntity?
+    suspend fun updateServiceLog(log: ServiceLogEntity)
 }
 
 interface ExpenseLogRepository {
@@ -47,6 +51,8 @@ interface ExpenseLogRepository {
     suspend fun deleteExpenseLog(log: ExpenseLogEntity)
     suspend fun getAllExpenseLogs(): List<ExpenseLogEntity>
     suspend fun insertAllExpenseLogs(logs: List<ExpenseLogEntity>): List<Long>
+    suspend fun getExpenseLogById(id: Long): ExpenseLogEntity?
+    suspend fun updateExpenseLog(log: ExpenseLogEntity)
 }
 
 interface TripLogRepository {
@@ -55,6 +61,8 @@ interface TripLogRepository {
     suspend fun deleteTripLog(log: TripLogEntity)
     suspend fun getAllTripLogs(): List<TripLogEntity>
     suspend fun insertAllTripLogs(logs: List<TripLogEntity>): List<Long>
-    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
-    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double): TripLogEntity?
+    suspend fun getClosestLogBefore(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): TripLogEntity?
+    suspend fun getClosestLogAfter(vehicleId: Long, date: Long, odo: Double, excludeId: Long = -1L): TripLogEntity?
+    suspend fun getTripLogById(id: Long): TripLogEntity?
+    suspend fun updateTripLog(log: TripLogEntity)
 }
