@@ -90,3 +90,17 @@ jobs:
 
       - name: Create GitHub Pre-Release
         uses: softprops/action-gh-release@v2
+        with:
+          name: "Odo Beta v${{ steps.vars.outputs.version_name }} (build ${{ github.run_number }})"
+          tag_name: "${{ steps.vars.outputs.tag }}"
+          draft: false
+          prerelease: true
+          body: |
+            **Commit:** `${{ steps.vars.outputs.short_sha }}`
+
+            ### What's Changed
+            ${{ steps.changelog.outputs.changelog }}
+          files: |
+            Odo-*-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
