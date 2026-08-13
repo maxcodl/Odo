@@ -321,8 +321,7 @@ class AddFillUpViewModel @Inject constructor(
                 } else {
                     fuelRepo.insertFuelLog(entity)
                 }
-                                _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
+                _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
             }
         }
     }
-}
