@@ -92,22 +92,23 @@ class PumpDisplayReaderTest {
 
     @Test
     fun missingDecimalPointsAssumeTwoPlaces() {
-        val (values, validated) = PumpDisplayReader.interpret(listOf("81039", "714"), "11350", 0.0)
+        val (values, validated) = PumpDisplayReader.interpret(listOf("81039", "714"), listOf("11350"), 0.0)
         assertEquals(ReceiptValues(7.14, 113.5, 810.39), values)
         assertEquals(true, validated)
     }
 
     @Test
     fun unreadableRateFallsBackToLastFillUpPrice() {
-        val (values, validated) = PumpDisplayReader.interpret(listOf("810.39", "7.14"), null, lastRate = 112.0)
+        val (values, validated) = PumpDisplayReader.interpret(listOf("810.39", "7.14"), emptyList(), lastRate = 112.0)
         assertEquals(ReceiptValues(7.14, null, 810.39), values)
         assertEquals(true, validated)
     }
 
     @Test
-    fun rateThatDisagreesRejectsTheReading() {
-        val (values, _) = PumpDisplayReader.interpret(listOf("810.39", "9.14"), "113.50", 0.0)
-        assertEquals(null, values)
+    fun noAgreeingRateLeavesReadingUnvalidated() {
+        val (values, validated) = PumpDisplayReader.interpret(listOf("810.39", "9.14"), listOf("751.5", "113.50"), 0.0)
+        assertEquals(ReceiptValues(9.14, null, 810.39), values)
+        assertEquals(false, validated)
     }
 
     // ── Real photo ──────────────────────────────────────────────────────────
@@ -134,10 +135,36 @@ class PumpDisplayReaderTest {
     }
 
     @Test
-    fun readsRealPumpPhoto() {
-        val file = File("../pump.pgm")
-        assumeTrue("pump.pgm not present", file.exists())
-        val scan = PumpDisplayReader.read(readPgm(file))
-        assertEquals("scan: $scan", ReceiptValues(7.14, 113.5, 810.39), scan.values)
+    fun readsRealPumpPhoto() = assertPhoto("pump", ReceiptValues(7.14, 113.5, 810.39))
+
+    // One photo per layout seen at Indian pumps. PGMs are made by the python line above.
+
+    @Test // Tokheim, two displays side by side: the one nearest the centre is read
+    fun tokheimTwinDisplays() = assertPhoto("IMG_20260110_192839848", ReceiptValues(6.74, 105.49, 711.0))
+
+    @Test // BPCL blue backlight, Price/Litre on the left and blank: validated by last rate
+    @org.junit.Ignore("photo taken from a distance: digits too small and thin")
+    fun bpclBlueDisplayBlankRate() =
+        assertPhoto("IMG_20260223_191953100", ReceiptValues(7.72, null, 814.54), lastRate = 105.5)
+
+    @Test // Tokheim with the neighbouring display cut off at the edge
+    @org.junit.Ignore("steep angle: last digits hidden by the bezel, segments blurred to outlines")
+    fun tokheimPartlyCutNeighbour() = assertPhoto("IMG_20260601_215429287", ReceiptValues(7.05, 113.5, 800.18))
+
+    @Test // Accuefill: density inside the main bezel, rate in its own bezel further down
+    @org.junit.Ignore("sky reflection across the glass hides the LCD edges")
+    fun accuefillSeparateRateBezel() = assertPhoto("IMG_20260712_155540789", ReceiptValues(7.38, 113.48, 837.48))
+
+    @Test // Gilbarco: density and rate stacked on the left under a big main window
+    fun gilbarcoStackedSmallWindows() = assertPhoto("IMG_20260807_091809161", ReceiptValues(6.98, 113.5, 792.23))
+
+    @Test // Newer Tokheim, glare line across the volume row
+    fun tokheimNewWithGlare() = assertPhoto("IMG_20260831_222531923", ReceiptValues(6.01, 113.61, 682.8))
+
+    private fun assertPhoto(name: String, expected: ReceiptValues, lastRate: Double = 0.0) {
+        val file = File("../$name.pgm")
+        assumeTrue("$name.pgm not present", file.exists())
+        val scan = PumpDisplayReader.read(readPgm(file), lastRate)
+        assertEquals("scan: $scan", expected, scan.values)
     }
 }

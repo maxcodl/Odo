@@ -40,12 +40,12 @@ data class PumpScan(
 )
 
 /**
- * Reads Indian fuel-pump displays (Tokheim / Gilbarco / Midco style): a bright LCD window
- * holding the Amount row above the Volume row, with two small windows underneath
- * (Density left, Rate right), all set in a dark bezel.
+ * Reads Indian fuel-pump displays (Tokheim, Gilbarco, Accuefill, BPCL-style): a bright LCD
+ * window holding the Amount row above the Volume row, plus smaller Density / Rate windows
+ * somewhere below it (side by side, stacked, or in a separate bezel), all set in dark bezels.
  *
- * 1. Find bright rectangles fully enclosed by the dark bezel, and prefer the big-window +
- *    two-small-windows-below layout.
+ * 1. Find bright rectangles fully enclosed by dark bezel; a layout is a main window plus the
+ *    smaller windows below it. Several displays in view: nearest the centre first.
  * 2. Split each window into text rows, deskew the italic digits, split into digit cells.
  * 3. Decode each cell by checking which of its 7 segments are dark.
  *
@@ -53,14 +53,33 @@ data class PumpScan(
  */
 object PumpDisplayReader {
 
+    /** Destructures as (values, validated); [rate] is the small-window text that validated it. */
+    internal data class Interpretation(val values: ReceiptValues?, val validated: Boolean, val rate: String? = null)
+
+    // Bright/dark cutoffs tried after the automatic one. Backlit colour LCDs (e.g. blue) are
+    // dim in grayscale, so a fixed low cutoff may be the only one that isolates them. Every
+    // reading still has to pass the volume x rate = amount check, so extra tries are safe.
+    private val fallbackThresholds = listOf(50, 80, 110, 140, 170)
+
     fun read(img: GrayImage, lastRate: Double = 0.0): PumpScan {
-        val windows = findWindows(img)
-        val main = windows.firstOrNull() ?: return PumpScan(emptyList(), emptyList(), null, null, false)
-        val rows = decodeRows(img, main)
-        val rateWindow = windows.drop(1).filter { it.centerX > main.centerX }.maxByOrNull { it.centerX }
-        val rate = rateWindow?.let { decodeRows(img, it).firstOrNull() }
-        val (values, validated) = interpret(rows, rate, lastRate)
-        return PumpScan(windows, rows, rate, values, validated)
+        val small = downscale(img)
+        var best: PumpScan? = null
+        for (t in (listOf(otsu(small.img)) + fallbackThresholds).distinct()) {
+            for (layout in findLayouts(small, t)) {
+                val scan = readLayout(img, layout, lastRate)
+                if (scan.values != null && scan.validated) return scan
+                if (best == null || best.values == null && scan.values != null) best = scan
+            }
+        }
+        return best ?: PumpScan(emptyList(), emptyList(), null, null, false)
+    }
+
+    private fun readLayout(img: GrayImage, windows: List<Box>, lastRate: Double): PumpScan {
+        val rows = decodeRows(img, windows.first())
+        // Density vs rate position differs by brand: every small window is a rate candidate
+        val rateCandidates = windows.drop(1).mapNotNull { decodeRows(img, it).firstOrNull() }
+        val result = interpret(rows, rateCandidates, lastRate)
+        return PumpScan(windows, rows, result.rate, result.values, result.validated)
     }
 
     // ── Values ──────────────────────────────────────────────────────────────
@@ -70,27 +89,28 @@ object PumpDisplayReader {
 
     /**
      * Amount = first row, Volume = second row. A missing decimal dot means 2 decimals
-     * (volume may have 3). Validated when volume x rate = amount, or failing that when
-     * amount / volume is within 3% of the last fill-up's price.
+     * (volume may have 3). Validated when volume x (one of the small windows) = amount, or
+     * failing that when amount / volume is within 3% of the last fill-up's price. Otherwise
+     * offered unvalidated (the live scanner then needs more matching frames). A small window
+     * that disagrees doesn't reject the reading: the density window always disagrees.
      */
-    internal fun interpret(rows: List<String>, rateText: String?, lastRate: Double): Pair<ReceiptValues?, Boolean> {
-        if (rows.size < 2) return null to false
-        val amount = value(rows[0], 2)?.takeIf { it > 0 } ?: return null to false
+    internal fun interpret(rows: List<String>, rateTexts: List<String>, lastRate: Double): Interpretation {
+        val none = Interpretation(null, false)
+        if (rows.size < 2) return none
+        val amount = value(rows[0], 2)?.takeIf { it > 0 } ?: return none
         val volumes = (if ('.' in rows[1]) listOf(0) else listOf(2, 3)).mapNotNull { value(rows[1], it) }.filter { it > 0 }
-        if (volumes.isEmpty()) return null to false
-        val rate = rateText?.let { value(it, 2) }?.takeIf { it > 0 }
+        if (volumes.isEmpty()) return none
 
-        if (rate != null) {
+        for (text in rateTexts) {
+            val rate = value(text, 2)?.takeIf { it > 0 } ?: continue
             volumes.firstOrNull { abs(it * rate - amount) <= amount * 0.01 }
-                ?.let { return ReceiptValues(it, rate, amount) to true }
-            // A rate was read but disagrees: one of the rows is misread, offer nothing
-            return null to false
+                ?.let { return Interpretation(ReceiptValues(it, rate, amount), true, text) }
         }
         if (lastRate > 0) {
             volumes.firstOrNull { abs(amount / it - lastRate) <= lastRate * 0.03 }
-                ?.let { return ReceiptValues(it, null, amount) to true }
+                ?.let { return Interpretation(ReceiptValues(it, null, amount), true) }
         }
-        return ReceiptValues(volumes.first(), null, amount) to false
+        return Interpretation(ReceiptValues(volumes.first(), null, amount), false)
     }
 
     // ── Window detection ────────────────────────────────────────────────────
@@ -118,27 +138,36 @@ object PumpDisplayReader {
         return threshold
     }
 
-    /** Bright, rectangular blobs not touching the image edge; main window first, then small ones left→right. */
-    internal fun findWindows(img: GrayImage): List<Box> {
-        // Block-average downscale: thin label text blurs away instead of bridging windows together
+    private class Small(val img: GrayImage, val factor: Int)
+
+    /** Block-average downscale to ~400px wide: thin label text blurs away instead of bridging windows. */
+    private fun downscale(img: GrayImage): Small {
         val f = maxOf(1, img.width / 400)
         val w = img.width / f
         val h = img.height / f
-        val small = IntArray(w * h)
+        val out = IntArray(w * h)
         for (sy in 0 until h) for (sx in 0 until w) {
             var sum = 0
             for (dy in 0 until f) for (dx in 0 until f) sum += img[sx * f + dx, sy * f + dy]
-            small[sy * w + sx] = sum / (f * f)
+            out[sy * w + sx] = sum / (f * f)
         }
-        val smallImg = GrayImage(w, h, small)
-        val t = otsu(smallImg)
+        return Small(GrayImage(w, h, out), f)
+    }
 
+    /**
+     * Candidate layouts at brightness cutoff [t], in full-image pixels: each is a main window
+     * followed by the smaller windows below it (top to bottom). Up to 3, nearest centre first.
+     */
+    private fun findLayouts(small: Small, t: Int): List<List<Box>> {
+        val w = small.img.width
+        val h = small.img.height
+        val px = small.img.pixels
         val label = IntArray(w * h)
         val queue = IntArray(w * h)
         val candidates = mutableListOf<Box>()
         var next = 0
         for (start in 0 until w * h) {
-            if (label[start] != 0 || small[start] <= t) continue
+            if (label[start] != 0 || px[start] <= t) continue
             next++
             var head = 0; var tail = 0
             queue[tail++] = start; label[start] = next
@@ -149,30 +178,57 @@ object PumpDisplayReader {
                 count++
                 if (x < minX) minX = x; if (x > maxX) maxX = x
                 if (y < minY) minY = y; if (y > maxY) maxY = y
-                if (x > 0) { val q = p - 1; if (label[q] == 0 && small[q] > t) { label[q] = next; queue[tail++] = q } }
-                if (x < w - 1) { val q = p + 1; if (label[q] == 0 && small[q] > t) { label[q] = next; queue[tail++] = q } }
-                if (y > 0) { val q = p - w; if (label[q] == 0 && small[q] > t) { label[q] = next; queue[tail++] = q } }
-                if (y < h - 1) { val q = p + w; if (label[q] == 0 && small[q] > t) { label[q] = next; queue[tail++] = q } }
+                if (x > 0) { val q = p - 1; if (label[q] == 0 && px[q] > t) { label[q] = next; queue[tail++] = q } }
+                if (x < w - 1) { val q = p + 1; if (label[q] == 0 && px[q] > t) { label[q] = next; queue[tail++] = q } }
+                if (y > 0) { val q = p - w; if (label[q] == 0 && px[q] > t) { label[q] = next; queue[tail++] = q } }
+                if (y < h - 1) { val q = p + w; if (label[q] == 0 && px[q] > t) { label[q] = next; queue[tail++] = q } }
             }
-            val box = Box(minX, minY, maxX + 1, maxY + 1)
             val touchesEdge = minX == 0 || minY == 0 || maxX == w - 1 || maxY == h - 1
-            val aspect = box.width.toFloat() / box.height
-            if (!touchesEdge && box.area >= w * h / 500 && count >= box.area * 0.5 && aspect in 0.8f..6f) {
+            // Labels next to the LCD ("AMOUNT") can connect to it: shrink to the lit rectangle
+            val box = refineToLit(px, w, t, Box(minX, minY, maxX + 1, maxY + 1))
+            var lit = 0
+            for (y in box.top until box.bottom) for (x in box.left until box.right) if (px[y * w + x] > t) lit++
+            val aspect = box.width.toFloat() / maxOf(1, box.height)
+            // Density/rate boxes are tiny in a whole-pump photo: keep blobs down to 0.05%
+            if (!touchesEdge && box.area >= w * h / 2000 && lit >= box.area * 0.5 && aspect in 0.8f..6f) {
                 candidates += box
             }
         }
 
-        // Pump layout: main window with 1-2 smaller windows directly below it
+        // Density / rate windows: smaller, below the main window (side by side, stacked, or in
+        // their own bezel further down), horizontally within the main window's span
         fun below(main: Box) = candidates.filter { s ->
             s !== main &&
                 s.top >= main.bottom - main.height * 0.05 &&
-                s.top - main.bottom <= main.height * 0.8 &&
+                s.top - main.bottom <= main.height * 1.5 &&
                 s.centerX in (main.left - main.width / 10)..(main.right + main.width / 10) &&
-                s.width <= main.width * 0.75 && s.height <= main.height * 0.6
-        }.sortedBy { it.left }.take(2)
+                s.width <= main.width * 0.75 && s.height <= main.height * 0.6 &&
+                // not indicator LEDs or specks
+                s.width >= main.width * 0.2 && s.height >= main.height * 0.15
+        }.sortedWith(compareBy<Box> { it.top }.thenBy { it.left }).take(3)
 
-        val main = candidates.maxWithOrNull(compareBy<Box> { below(it).size }.thenBy { it.area }) ?: return emptyList()
-        return (listOf(main) + below(main)).map { Box(it.left * f, it.top * f, it.right * f, it.bottom * f) }
+        fun distanceToCentre(b: Box): Int {
+            val dx = b.centerX - w / 2
+            val dy = (b.top + b.bottom) / 2 - h / 2
+            return dx * dx + dy * dy
+        }
+        val mains = candidates.filter { below(it).isNotEmpty() }.ifEmpty { candidates }
+        val f = small.factor
+        return mains.sortedBy(::distanceToCentre).take(3).map { main ->
+            (listOf(main) + below(main)).map { Box(it.left * f, it.top * f, it.right * f, it.bottom * f) }
+        }
+    }
+
+    /** Trims edge rows/columns of [box] that are less than 30% lit (label text, bezel). */
+    private fun refineToLit(px: IntArray, w: Int, t: Int, box: Box): Box {
+        fun rowLit(y: Int, l: Int, r: Int) = (l until r).count { px[y * w + it] > t } >= (r - l) * 0.3
+        fun colLit(x: Int, top: Int, bottom: Int) = (top until bottom).count { px[it * w + x] > t } >= (bottom - top) * 0.3
+        var l = box.left; var top = box.top; var r = box.right; var bottom = box.bottom
+        while (bottom - top > 2 && !rowLit(top, l, r)) top++
+        while (bottom - top > 2 && !rowLit(bottom - 1, l, r)) bottom--
+        while (r - l > 2 && !colLit(l, top, bottom)) l++
+        while (r - l > 2 && !colLit(r - 1, top, bottom)) r--
+        return Box(l, top, r, bottom)
     }
 
     // ── Digit decoding ──────────────────────────────────────────────────────
@@ -196,12 +252,28 @@ object PumpDisplayReader {
 
     /** Decoded text rows of a window, top to bottom; rows that aren't clean digits are dropped. */
     internal fun decodeRows(img: GrayImage, window: Box): List<String> {
-        val inner = window.inset(0.03f, 0.05f)
-        if (inner.width < 10 || inner.height < 10) return emptyList()
-        val t = otsu(img, inner)
+        val loose = window.inset(0.03f, 0.05f)
+        if (loose.width < 10 || loose.height < 10) return emptyList()
+        val t = otsu(img, loose)
         val ink = { x: Int, y: Int -> img[x, y] <= t }
 
-        val rowInk = IntArray(inner.height) { dy -> (inner.left until inner.right).count { ink(it, inner.top + dy) } }
+        // The detected box can overshoot the LCD into the bezel (Tokheim's newer panels): trim
+        // edge rows that are mostly ink and edge columns that are almost all ink, or they
+        // swallow a digit row into one band. Columns are stricter: a right-edge "1" can be ~70%.
+        fun rowFull(y: Int, l: Int, r: Int) = (l until r).count { ink(it, y) } > (r - l) * 0.6
+        fun colFull(x: Int, top: Int, bottom: Int) = (top until bottom).count { ink(x, it) } > (bottom - top) * 0.9
+        var l = loose.left; var top = loose.top; var r = loose.right; var bottom = loose.bottom
+        while (bottom - top > 10 && rowFull(top, l, r)) top++
+        while (bottom - top > 10 && rowFull(bottom - 1, l, r)) bottom--
+        while (r - l > 10 && colFull(l, top, bottom)) l++
+        while (r - l > 10 && colFull(r - 1, top, bottom)) r--
+        val inner = Box(l, top, r, bottom)
+
+        // Columns dark in most rows (edge shadow, border line) would join every row into one band
+        val rowProfileCols = (inner.left until inner.right).filter { x ->
+            (inner.top until inner.bottom).count { ink(x, it) } <= inner.height * 0.7
+        }
+        val rowInk = IntArray(inner.height) { dy -> rowProfileCols.count { ink(it, inner.top + dy) } }
         val minRowInk = maxOf(1, inner.width / 50)
         val maxGap = maxOf(1, inner.height / 25) // bridges the gap between upper and lower segments
         val bands = mutableListOf<IntRange>()
@@ -218,10 +290,13 @@ object PumpDisplayReader {
             .mapNotNull { decodeBand(ink, inner.left, inner.right, it.first, it.last + 1) }
     }
 
-    private fun decodeBand(ink: (Int, Int) -> Boolean, x0: Int, x1: Int, y0: Int, y1: Int): String? {
+    private fun decodeBand(rawInk: (Int, Int) -> Boolean, x0: Int, x1: Int, y0: Int, y1: Int): String? {
         val h = y1 - y0
         val mid = (y0 + y1) / 2f
         val pad = h // room for shifted columns
+        // Rows dark across the band (a border line inside the LCD) would join all digits into one
+        val solid = BooleanArray(h) { dy -> (x0 until x1).count { rawInk(it, y0 + dy) } > (x1 - x0) * 0.75 }
+        val ink = { x: Int, y: Int -> !solid[y - y0] && rawInk(x, y) }
 
         fun profile(shear: Float): IntArray {
             val cols = IntArray(x1 - x0 + 2 * pad)
@@ -234,13 +309,9 @@ object PumpDisplayReader {
             }
             return cols
         }
-        // Italic digits: pick the shear that opens up the most empty columns between digits
-        val shear = (-6..6).map { it * 0.05f }.maxBy { s ->
-            val cols = profile(s)
-            val first = cols.indexOfFirst { it > 0 }
-            val last = cols.indexOfLast { it > 0 }
-            if (first < 0) 0 else (first..last).count { cols[it] == 0 }
-        }
+        // Italic digits: the right shear lines the strokes up, so the fewest columns hold ink.
+        // Ties go to the smaller shear (upright digits stay upright). Gilbarco slants ~0.35.
+        val shear = (-9..9).map { it * 0.05f }.sortedBy { abs(it) }.minBy { s -> profile(s).count { it > 0 } }
         val cols = profile(shear)
         val minColInk = maxOf(1, h / 25)
 
@@ -274,10 +345,11 @@ object PumpDisplayReader {
             }
             return top to bottom
         }
-        fun isDot(e: Pair<Int, Int>) = e.second - e.first in 1 until (h * 0.3f).toInt() && e.first > y0 + h * 0.6f
+        fun isDot(e: Pair<Int, Int>, width: Int) =
+            e.second - e.first in 1 until (h * 0.3f).toInt() && e.first > y0 + h * 0.6f && width <= h * 0.3f
 
         // Segments of one digit can be split by thin gaps (bar ends don't touch): rejoin cells
-        // closer than 8% of the digit height. The decimal dot sits in such a gap, so it's kept apart.
+        // closer than 12% of the digit height. The decimal dot sits in such a gap, so it's kept apart.
         // A merge may not grow a digit past the typical width of the row's intact digits, so an
         // edge speck next to the last digit isn't absorbed (it shifts where segments are sampled).
         val intactWidths = cells.filter { c ->
@@ -288,9 +360,10 @@ object PumpDisplayReader {
         val merged = mutableListOf<IntRange>()
         for (cell in cells) {
             val prev = merged.lastOrNull()
-            if (prev != null && cell.first - prev.last - 1 < h * 0.08f &&
+            if (prev != null && cell.first - prev.last - 1 < h * 0.12f &&
                 cell.last - prev.first + 1 <= maxDigitWidth &&
-                !isDot(extent(prev.first, prev.last + 1)) && !isDot(extent(cell.first, cell.last + 1))
+                !isDot(extent(prev.first, prev.last + 1), prev.last - prev.first + 1) &&
+                !isDot(extent(cell.first, cell.last + 1), cell.last - cell.first + 1)
             ) {
                 merged[merged.size - 1] = prev.first..cell.last
             } else {
@@ -306,7 +379,7 @@ object PumpDisplayReader {
             val cw = c1 - c0
             when {
                 ch <= 0 -> continue
-                ch < h * 0.3f && top > y0 + h * 0.6f -> { if ('.' !in out && out.isNotEmpty()) out.append('.') }
+                ch < h * 0.3f && top > y0 + h * 0.6f -> { if ('.' !in out && out.isNotEmpty() && cw <= h * 0.3f) out.append('.') }
                 ch < h * 0.6f -> continue // dirt / reflections
                 cw < h * 0.28f -> out.append('1')
                 else -> {
