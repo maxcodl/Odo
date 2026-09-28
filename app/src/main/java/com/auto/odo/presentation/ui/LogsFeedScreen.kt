@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.ui
 
+import com.auto.odo.FloatingNavBarClearance
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -102,7 +103,7 @@ fun LogsFeedContent(
             contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
             containerColor = MaterialTheme.colorScheme.background, 
             snackbarHost = {
-                SnackbarHost(hostState = snackbarHostState) { data ->
+                SnackbarHost(hostState = snackbarHostState, modifier = Modifier.padding(bottom = FloatingNavBarClearance)) { data ->
                     Snackbar(
                         snackbarData = data,
                         shape = RoundedCornerShape(12.dp),

@@ -1,4 +1,4 @@
-import java.util.Properties
+﻿import java.util.Properties
 import java.io.FileInputStream
 
 plugins {
@@ -18,8 +18,8 @@ android {
         applicationId = "com.auto.odo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.4" // Updated to match your new release version
+        versionCode = 4
+        versionName = "1.0.5"
     }
 
     // Load local.properties for local release builds safely
@@ -148,6 +148,13 @@ dependencies {
 
     // DataStore
     implementation(libs.datastore.preferences)
+
+    // On-device OCR (bundled model, offline) for receipt / odometer scanning
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Live scanner: camera preview + frame analysis
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
 
     // DocumentFile (SAF)
     implementation(libs.androidx.documentfile)

@@ -16,6 +16,16 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import androidx.lifecycle.SavedStateHandle
+import android.content.Context
+import android.net.Uri
+import com.auto.odo.core.PumpDisplayReader
+import com.auto.odo.core.ReceiptValues
+import com.auto.odo.core.TextScanner
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import dagger.hilt.android.qualifiers.ApplicationContext
 
 
 @Immutable
@@ -31,11 +41,17 @@ data class AddFillUpUiState(
     val notes: String = "",
     val receiptPath: String? = null,
     val lastKnownOdometer: Double = 0.0,
+    val lastPricePerUnit: Double = 0.0,
     val odometerError: String? = null,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
-    val isEditMode: Boolean = false
-)
+    val isEditMode: Boolean = false,
+    val isScanning: Boolean = false,
+    val scanMessage: String? = null
+) {
+    // Editing an older log can legitimately be below the latest reading, so no floor there
+    val odometerScanFloor: Double get() = if (isEditMode) 0.0 else lastKnownOdometer
+}
 
 @HiltViewModel
 class AddFillUpViewModel @Inject constructor(
@@ -43,6 +59,7 @@ class AddFillUpViewModel @Inject constructor(
     private val fuelRepo: FuelLogRepository,
     private val sessionManager: UserSessionManager,
     private val validateOdometer: ValidateOdometerUseCase,
+    @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -90,6 +107,8 @@ class AddFillUpViewModel @Inject constructor(
                             // CREATE MODE: existing prefill behavior
                             val logs = fuelRepo.getFuelLogsSortedByOdometer(vehicleId)
                             val lastOdoKm = logs.lastOrNull()?.odometer ?: 0.0
+                            // Fuel price rarely changes between fills: prefill it, and the pump scanner uses it to cross-check readings
+                            val lastPrice = logs.lastOrNull()?.pricePerUnit ?: 0.0
                             val lastOdoDisplay = if (vehicle?.distanceUnit == "miles")
                                 UnitConverter.kmToMiles(lastOdoKm) else lastOdoKm
 
@@ -97,6 +116,8 @@ class AddFillUpViewModel @Inject constructor(
                                 it.copy(
                                     selectedVehicle = vehicle,
                                     lastKnownOdometer = lastOdoDisplay,
+                                    lastPricePerUnit = lastPrice,
+                                    pricePerUnit = if (lastPrice > 0) String.format(java.util.Locale.US, "%.2f", lastPrice) else "",
                                     odometer = if (lastOdoDisplay > 0)
                                         String.format(java.util.Locale.US, "%.0f", lastOdoDisplay) else ""
                                 )
@@ -114,7 +135,7 @@ class AddFillUpViewModel @Inject constructor(
             it.copy(
                 date = System.currentTimeMillis(),
                 quantity = "",
-                pricePerUnit = "",
+                pricePerUnit = if (it.lastPricePerUnit > 0) String.format(java.util.Locale.US, "%.2f", it.lastPricePerUnit) else "",
                 totalCost = "",
                 isPartialTank = false,
                 stationName = "",
@@ -228,6 +249,53 @@ class AddFillUpViewModel @Inject constructor(
 
     fun onReceiptAttached(path: String?) {
         _uiState.update { it.copy(receiptPath = path) }
+        if (path != null) scanFuelValues(Uri.parse(path))
+    }
+
+    fun onScanMessageShown() {
+        _uiState.update { it.copy(scanMessage = null) }
+    }
+
+    /** Works for both printed receipts and photos of the pump display. */
+    fun scanFuelValues(uri: Uri) = runScan {
+        // Pump display photos: the 7-segment decoder; printed receipts: ML Kit text
+        val pump = PumpDisplayReader.read(TextScanner.loadGray(context, uri), _uiState.value.lastPricePerUnit)
+        val r = pump.values ?: TextScanner.parseReceipt(TextScanner.recognize(context, uri))
+        if (r.quantity == null && r.pricePerUnit == null && r.totalCost == null) return@runScan "No fuel values found in image"
+        applyFuelValues(r)
+        "Fuel values filled — please verify"
+    }
+
+    fun applyFuelValues(r: ReceiptValues) {
+        // Clear first so the auto-calc handlers derive the missing value from scanned ones only
+        _uiState.update { it.copy(quantity = "", pricePerUnit = "", totalCost = "") }
+        r.pricePerUnit?.let { onPricePerUnitChanged(it.toString()) }
+        r.quantity?.let { onQuantityChanged(it.toString()) }
+        r.totalCost?.let { onTotalCostChanged(it.toString()) }
+    }
+
+    fun scanOdometer(uri: Uri) = runScan {
+        val gray = TextScanner.loadGray(context, uri)
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val odo = try {
+            withContext(Dispatchers.IO) { TextScanner.readOdometerBlocking(recognizer, gray, _uiState.value.odometerScanFloor).first }
+        } finally {
+            recognizer.close()
+        } ?: return@runScan "Couldn't read odometer — try a closer, glare-free photo"
+        onOdometerChanged(odo)
+        "Odometer read: $odo"
+    }
+
+    private fun runScan(handle: suspend () -> String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isScanning = true) }
+            val message = try {
+                handle()
+            } catch (e: Exception) {
+                "Scan failed: ${e.message}"
+            }
+            _uiState.update { it.copy(isScanning = false, scanMessage = message) }
+        }
     }
 
     private fun validateOdometerChronologically() {

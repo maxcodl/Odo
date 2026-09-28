@@ -5,6 +5,10 @@
     
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Live odometer / pump display scanner; the app still works without a camera -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:name=".OdoApplication"
         android:allowBackup="true"
