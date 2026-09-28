@@ -20,6 +20,9 @@ android {
         targetSdk = 36
         versionCode = 4
         versionName = "1.0.5"
+
+        // Phones only: drops the x86 emulator/Chromebook copies of native libraries
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     // Load local.properties for local release builds safely
@@ -149,8 +152,10 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
-    // On-device OCR (bundled model, offline) for receipt / odometer scanning
-    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // On-device OCR for receipt / odometer scanning. Play Services build: the model is shared
+    // and downloaded once by Play Services (then works offline), instead of ~25 MB bundled here.
+    // The pump display decoder doesn't use ML Kit, so it works even before the model arrives.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
     // Live scanner: camera preview + frame analysis
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
