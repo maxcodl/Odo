@@ -1,4 +1,4 @@
-import java.util.Properties
+﻿import java.util.Properties
 import java.io.FileInputStream
 
 plugins {
@@ -18,8 +18,8 @@ android {
         applicationId = "com.auto.odo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.4" // Updated to match your new release version
+        versionCode = 4
+        versionName = "1.0.5"
     }
 
     // Load local.properties for local release builds safely
