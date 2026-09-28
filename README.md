@@ -22,14 +22,15 @@ Track fuel, services, expenses and trips — or just point your camera at the pu
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/home.png" width="220" alt="Home dashboard" /><br/><sub><b>Home</b> — 30-day metrics & recent activity</sub></td>
-    <td align="center"><img src="docs/screenshots/logs.png" width="220" alt="Log feed" /><br/><sub><b>Log feed</b> — every entry, filterable</sub></td>
-    <td align="center"><img src="docs/screenshots/analytics.png" width="220" alt="Analytics" /><br/><sub><b>Analytics</b> — monthly spend & fuel economics</sub></td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/8935095e-5cfb-45ef-9d9c-c86b1eea264d" width="220" alt="Home dashboard" /><br/><sub><b>Home</b> — 30-day metrics & recent activity</sub></td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/ebf8673f-cee5-48e7-93ef-ff847def42e0" width="220" alt="Log feed" /><br/><sub><b>Log feed</b> — every entry, filterable</sub></td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/2d1eac57-bd8a-40be-b3a5-eb188c68309a" width="220" alt="Analytics" /><br/><sub><b>Analytics</b> — monthly spend & fuel economics</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/fill-up.png" width="220" alt="Log a fill-up" /><br/><sub><b>Log fill-up</b> — rate prefilled, auto-calc</sub></td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/56955854-0aeb-474e-a4f1-23c3eee85651"![Uploading Screenshot_20260928-170730.png…]()
+ width="220" alt="Log a fill-up" /><br/><sub><b>Log fill-up</b> — rate prefilled, auto-calc</sub></td>
     <td align="center"><img src="docs/screenshots/scan-pump.png" width="220" alt="Pump display scanner" /><br/><sub><b>Pump scanner</b> — reads the 7-segment display</sub></td>
-    <td align="center"><img src="docs/screenshots/settings.png" width="220" alt="Settings" /><br/><sub><b>Settings</b> — Monet, AMOLED, backups</sub></td>
+    <td align="center"><img src="https://github.com/user-attachments/assets/e8a7f39b-cc92-4677-9c12-f1c6245187e0" width="220" alt="Settings" /><br/><sub><b>Settings</b> — Monet, AMOLED, backups</sub></td>
   </tr>
 </table>
 
