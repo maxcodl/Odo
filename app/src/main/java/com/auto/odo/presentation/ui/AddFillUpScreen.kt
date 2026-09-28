@@ -12,14 +12,17 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import android.net.Uri
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -56,6 +59,15 @@ fun AddFillUpScreen(
         onStationNameChanged = viewModel::onStationNameChanged,
         onNotesChanged = viewModel::onNotesChanged,
         onReceiptAttached = viewModel::onReceiptAttached,
+        onScanOdometer = viewModel::scanOdometer,
+        onScanPump = viewModel::scanFuelValues,
+        onLiveResult = { result ->
+            when (result) {
+                is LiveScanResult.Odometer -> viewModel.onOdometerChanged(result.reading)
+                is LiveScanResult.Fuel -> viewModel.applyFuelValues(result.values)
+            }
+        },
+        onScanMessageShown = viewModel::onScanMessageShown,
         onSaveFillUp = viewModel::saveFillUp,
         onClearForm = viewModel::clearForm
     )
@@ -77,6 +89,10 @@ fun AddFillUpContent(
     onStationNameChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onReceiptAttached: (String?) -> Unit,
+    onScanOdometer: (Uri) -> Unit,
+    onScanPump: (Uri) -> Unit,
+    onLiveResult: (LiveScanResult) -> Unit,
+    onScanMessageShown: () -> Unit,
     onSaveFillUp: () -> Unit,
     onClearForm: () -> Unit
 ) {
@@ -84,6 +100,13 @@ fun AddFillUpContent(
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val receiptPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         onReceiptAttached(uri?.toString())
+    }
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.scanMessage) {
+        uiState.scanMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            onScanMessageShown()
+        }
     }
 
     var showDatePicker by remember { mutableStateOf(false) }
@@ -97,6 +120,7 @@ fun AddFillUpContent(
     Scaffold(
         modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = { Text(if (uiState.isEditMode) "Edit Fill-Up" else "Log Fill-Up", fontWeight = FontWeight.Bold) },
@@ -210,6 +234,9 @@ fun AddFillUpContent(
                 placeholder = { Text("Last known: ${"%.0f".format(uiState.lastKnownOdometer)}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 isError = uiState.odometerError != null,
+                trailingIcon = {
+                    ScanActions(ScanTarget.ODOMETER, "odometer", uiState.isScanning, uiState.odometerScanFloor, uiState.lastPricePerUnit, onScanOdometer, onLiveResult)
+                },
                 supportingText = {
                     if (uiState.odometerError != null) {
                         Text(uiState.odometerError!!, color = MaterialTheme.colorScheme.error)
@@ -219,6 +246,19 @@ fun AddFillUpContent(
                 },
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // 3.5 Pump display scan -> quantity / price / total
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Scan Pump Display", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
+                    Text("Scan the pump display to fill quantity & total. Rate is prefilled from your last fill-up.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                ScanActions(ScanTarget.PUMP, "pump display", uiState.isScanning, uiState.odometerScanFloor, uiState.lastPricePerUnit, onScanPump, onLiveResult)
+            }
 
             // 4. Numeric Variables
             Row(
@@ -316,6 +356,7 @@ fun AddFillUpContent(
                         Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Tap to attach receipt image", style = MaterialTheme.typography.bodyMedium)
+                        Text("Quantity, price & total are read automatically", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -360,6 +401,44 @@ fun AddFillUpContent(
             }
         ) {
             DatePicker(state = datePickerState)
+        }
+    }
+}
+
+/** Live camera scanner + gallery pick. Gallery images go through [onImage] for one-shot OCR. */
+@Composable
+private fun ScanActions(
+    target: ScanTarget,
+    label: String,
+    isScanning: Boolean,
+    odometerFloor: Double,
+    lastRate: Double,
+    onImage: (Uri) -> Unit,
+    onLiveResult: (LiveScanResult) -> Unit
+) {
+    var showScanner by remember { mutableStateOf(false) }
+    val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let(onImage)
+    }
+    if (showScanner) {
+        LiveScannerDialog(
+            target = target,
+            odometerFloor = odometerFloor,
+            lastRate = lastRate,
+            onResult = { onLiveResult(it); showScanner = false },
+            onDismiss = { showScanner = false }
+        )
+    }
+    if (isScanning) {
+        CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
+        return
+    }
+    Row {
+        IconButton(onClick = { showScanner = true }) {
+            Icon(Icons.Default.CameraAlt, contentDescription = "Scan $label with camera")
+        }
+        IconButton(onClick = { gallery.launch("image/*") }) {
+            Icon(Icons.Default.PhotoLibrary, contentDescription = "Pick $label image")
         }
     }
 }

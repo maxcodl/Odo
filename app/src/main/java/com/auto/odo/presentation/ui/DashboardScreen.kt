@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.auto.odo.core.UnitConverter
+import com.auto.odo.FloatingNavBarClearance
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.usecase.LogItem
 import com.auto.odo.presentation.theme.OdoTheme
@@ -58,7 +58,11 @@ fun DashboardScreen(
     onNavigateToAddExpense: () -> Unit,
     onNavigateToAddTrip: () -> Unit,
     onNavigateToUpdateOdo: () -> Unit,
-    onNavigateToLogs: () -> Unit
+    onNavigateToLogs: () -> Unit,
+    pendingDeleteLog: LogItem? = null,
+    onDeleteLog: (LogItem) -> Unit = {},
+    onUndoDelete: () -> Unit = {},
+    onNavigateToEdit: (LogItem) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     DashboardScreenContent(
@@ -75,7 +79,11 @@ fun DashboardScreen(
         onNavigateToAddExpense = onNavigateToAddExpense,
         onNavigateToAddTrip = onNavigateToAddTrip,
         onNavigateToUpdateOdo = onNavigateToUpdateOdo,
-        onNavigateToLogs = onNavigateToLogs
+        onNavigateToLogs = onNavigateToLogs,
+        pendingDeleteLog = pendingDeleteLog,
+        onDeleteLog = onDeleteLog,
+        onUndoDelete = onUndoDelete,
+        onNavigateToEdit = onNavigateToEdit
     )
 }
 
@@ -93,9 +101,27 @@ fun DashboardScreenContent(
     onNavigateToAddExpense: () -> Unit = {},
     onNavigateToAddTrip: () -> Unit = {},
     onNavigateToUpdateOdo: () -> Unit = {},
-    onNavigateToLogs: () -> Unit = {}
+    onNavigateToLogs: () -> Unit = {},
+    pendingDeleteLog: LogItem? = null,
+    onDeleteLog: (LogItem) -> Unit = {},
+    onUndoDelete: () -> Unit = {},
+    onNavigateToEdit: (LogItem) -> Unit = {}
 ) {
     var isVehicleMenuExpanded by remember { mutableStateOf(false) }
+    var selectedLog by remember { mutableStateOf<LogItem?>(null) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(pendingDeleteLog) {
+        val log = pendingDeleteLog ?: return@LaunchedEffect
+        val label = when (log) {
+            is LogItem.Fuel -> "Fuel log"
+            is LogItem.Service -> "Service log"
+            is LogItem.Expense -> "Expense"
+            is LogItem.Trip -> "Trip"
+        }
+        val result = snackbarHostState.showSnackbar("$label deleted", actionLabel = "UNDO", duration = SnackbarDuration.Short)
+        if (result == SnackbarResult.ActionPerformed) onUndoDelete()
+    }
     var showAddVehicleSheet by remember { mutableStateOf(false) }
     var isFabExpanded by remember { mutableStateOf(false) }
 
@@ -106,6 +132,7 @@ fun DashboardScreenContent(
             if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier
         ),
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
+        snackbarHost = { SnackbarHost(snackbarHostState, modifier = Modifier.padding(bottom = FloatingNavBarClearance)) },
         topBar = {
             TopAppBar(
                 title = {
@@ -232,9 +259,32 @@ fun DashboardScreenContent(
                 DashboardContent(
                     uiState = uiState,
                     paddingValues = paddingValues,
-                    onNavigateToLogs = onNavigateToLogs
+                    onNavigateToLogs = onNavigateToLogs,
+                    pendingDeleteLog = pendingDeleteLog,
+                    onDeleteLog = onDeleteLog,
+                    onOpenLog = { selectedLog = it }
                 )
             }
+        }
+    }
+
+    // Same details view as the log feed: full info, edit and delete
+    AnimatedVisibility(
+        visible = selectedLog != null,
+        enter = slideInHorizontally { it },
+        exit = slideOutHorizontally { it }
+    ) {
+        selectedLog?.let { log ->
+            val vehicle = uiState.selectedVehicle
+            LogDetailsFullScreen(
+                payload = LogDetailPayload(log, null, null),
+                currency = vehicle?.currency ?: "INR",
+                distUnit = vehicle?.distanceUnit ?: "km",
+                fuelUnit = vehicle?.fuelUnit ?: "Liters",
+                onBack = { selectedLog = null },
+                onDelete = { onDeleteLog(it); selectedLog = null },
+                onEdit = { selectedLog = null; onNavigateToEdit(it) }
+            )
         }
     }
 
@@ -307,12 +357,14 @@ private fun QuickActionFab(onClick: () -> Unit, label: String, icon: androidx.co
 fun DashboardContent(
     uiState: DashboardUiState,
     paddingValues: PaddingValues,
-    onNavigateToLogs: () -> Unit
+    onNavigateToLogs: () -> Unit,
+    pendingDeleteLog: LogItem? = null,
+    onDeleteLog: (LogItem) -> Unit = {},
+    onOpenLog: (LogItem) -> Unit = {}
 ) {
     val vehicle = uiState.selectedVehicle ?: return
     val metrics = uiState.metrics
 
-    val dateFormatter = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     val chartDateFormatter = remember { SimpleDateFormat("dd MMM", Locale.getDefault()) }
     val efficiencyFormat = remember { "%.1f" }
     val costFormat = remember { "%.2f" }
@@ -408,7 +460,11 @@ fun DashboardContent(
             }
         }
 
-        if (uiState.recentLogs.isEmpty()) {
+        // Hide a log while its delete can still be undone
+        val recentLogs = uiState.recentLogs.filter { log ->
+            pendingDeleteLog == null || log.id != pendingDeleteLog.id || log.javaClass != pendingDeleteLog.javaClass
+        }
+        if (recentLogs.isEmpty()) {
             item(key = "empty_logs") {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
@@ -418,16 +474,13 @@ fun DashboardContent(
             }
         } else {
             items(
-                items = uiState.recentLogs,
+                items = recentLogs,
                 key = { "${it.javaClass.simpleName}_${it.id}" }
             ) { log ->
-                RecentLogItemRow(
-                    log = log, 
-                    currency = vehicle.currency, 
-                    distanceUnit = vehicle.distanceUnit,
-                    dateFormatter = dateFormatter,
-                    costFormat = costFormat
-                )
+                // Same card as the log feed: tap for details / edit, long-press to delete
+                LogItemCardWrapper(log = log, onDelete = onDeleteLog, onClick = { onOpenLog(log) }) {
+                    LogItemCard(log = log, currency = vehicle.currency, distUnit = vehicle.distanceUnit, fuelUnit = vehicle.fuelUnit)
+                }
             }
         }
     }
@@ -573,42 +626,6 @@ fun BezierChart(
                     Text("${efficiencyFormat.format(point.value)} $distanceUnit/${if(fuelUnit == "Liters") "L" else "gal"}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp).clickable { selectedIndex = -1 }, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun RecentLogItemRow(log: LogItem, currency: String, distanceUnit: String, dateFormatter: SimpleDateFormat, costFormat: String) {
-    fun displayDistance(km: Double): Double = if (distanceUnit == "miles") UnitConverter.kmToMiles(km) else km
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-    ) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            val (icon, tint, title) = when (log) {
-                is LogItem.Fuel -> Triple(Icons.Default.LocalGasStation, MaterialTheme.colorScheme.primary, "Fill-Up")
-                is LogItem.Service -> Triple(Icons.Default.Build, MaterialTheme.colorScheme.secondary, "Service: ${log.serviceType}")
-                is LogItem.Expense -> Triple(Icons.Default.ShoppingCart, MaterialTheme.colorScheme.tertiary, "Expense: ${log.category}")
-                is LogItem.Trip -> Triple(Icons.Default.DirectionsCar, MaterialTheme.colorScheme.primary, "Trip: ${log.purpose}")
-            }
-            Box(modifier = Modifier.size(40.dp).background(tint.copy(alpha = 0.15f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                Icon(imageVector = icon, contentDescription = null, tint = tint)
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
-                Text(text = dateFormatter.format(Date(log.date)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                if (log is LogItem.Fuel) Text(
-                    text = "${String.format(Locale.US, "%.0f", displayDistance(log.odometer))} $distanceUnit",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (log.totalCost > 0) Text(text = "$currency ${costFormat.format(log.totalCost)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
     }

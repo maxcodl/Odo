@@ -256,13 +256,21 @@ fun AnalyticsScreen(
                                     val barColor = MaterialTheme.colorScheme.primary
                                     
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().height(140.dp),
+                                        modifier = Modifier.fillMaxWidth().height(160.dp),
                                         horizontalArrangement = Arrangement.SpaceEvenly,
                                         verticalAlignment = Alignment.Bottom
                                     ) {
                                         uiState.monthlyChartData.forEach { point ->
                                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                                 val heightPercentage = if (maxVal > 0) (point.totalCost.toFloat() / maxVal) else 0f
+                                                Text(
+                                                    "$sym${compactAmount(point.totalCost)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
                                                 Box(
                                                     modifier = Modifier
                                                         .width(32.dp)
@@ -342,6 +350,13 @@ fun AnalyticsScreen(
             }
         }
     }
+}
+
+// Keeps labels narrow enough to sit above a 32dp bar: 950, 1.2k, 1.5L (lakh)
+private fun compactAmount(v: Double): String = when {
+    v >= 100_000 -> "%.1fL".format(v / 100_000)
+    v >= 1_000 -> "%.1fk".format(v / 1_000)
+    else -> "%.0f".format(v)
 }
 
 @Composable

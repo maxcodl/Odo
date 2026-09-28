@@ -149,6 +149,13 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // On-device OCR (bundled model, offline) for receipt / odometer scanning
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // Live scanner: camera preview + frame analysis
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+
     // DocumentFile (SAF)
     implementation(libs.androidx.documentfile)
 }

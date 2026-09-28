@@ -1,5 +1,6 @@
 package com.auto.odo.presentation.ui
 
+import com.auto.odo.FloatingNavBarClearance
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -143,7 +144,7 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = if (autoHideTitleBar) Modifier.nestedScroll(scrollBehavior.nestedScrollConnection) else Modifier,
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState, modifier = Modifier.padding(bottom = FloatingNavBarClearance)) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         topBar = {

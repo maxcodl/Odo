@@ -41,6 +41,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.auto.odo.domain.usecase.LogItem
+import kotlinx.coroutines.flow.map
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector?) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Home)
@@ -116,6 +117,29 @@ fun MainAppScreen(mainViewModel: MainViewModel) {
         currentRoute == Screen.Backup.route // NEW: Hides nav bar on Backup screen
     }
 
+    // Tabs and "View All" must use the same navigation: a plain navigate() stacks the tab on top of
+    // Home, and restoreState then brings that stack back, trapping you on it.
+    val navigateToTab: (Screen) -> Unit = { screen ->
+        if (currentRoute != screen.route) {
+            navController.navigate(screen.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+    val navigateToEdit: (LogItem) -> Unit = { log ->
+        val route = when (log) {
+            is LogItem.Fuel -> Screen.AddFillUp.edit(log.id)
+            is LogItem.Service -> Screen.AddService.edit(log.id)
+            is LogItem.Expense -> Screen.AddExpense.edit(log.id)
+            is LogItem.Trip -> Screen.AddTrip.edit(log.id)
+        }
+        navController.navigate(route)
+    }
+
 Scaffold(
         modifier = Modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -126,17 +150,7 @@ Scaffold(
                     modifier = Modifier.padding(bottom = 24.dp),
                     currentRoute = currentRoute,
                     style = navBarStyle,
-                    onNavigate = { screen ->
-                        if (currentRoute != screen.route) {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        }
-                    }
+                    onNavigate = navigateToTab
                 )
             }
         }
@@ -154,6 +168,10 @@ Scaffold(
             composable(Screen.Dashboard.route) {
                 val autoHideTitleBar by mainViewModel.autoHideTitleBar.collectAsStateWithLifecycle()
                 val fullScreenStatusBar by mainViewModel.fullScreenStatusBar.collectAsStateWithLifecycle()
+                // Recent activity shares the log feed's delete + undo (activity-scoped VM)
+                val logsViewModel: LogsFeedViewModel = hiltViewModel(activity)
+                val pendingDeleteLog by remember { logsViewModel.uiState.map { it.pendingDeleteLog } }
+                    .collectAsStateWithLifecycle(initialValue = null)
                 DashboardScreen(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
@@ -164,7 +182,11 @@ Scaffold(
                     onNavigateToAddExpense = { navController.navigate(Screen.AddExpense.route) },
                     onNavigateToAddTrip = { navController.navigate(Screen.AddTrip.route) },
                     onNavigateToUpdateOdo = { navController.navigate(Screen.UpdateOdometer.route) },
-                    onNavigateToLogs = { navController.navigate(Screen.Logs.route) }
+                    onNavigateToLogs = { navigateToTab(Screen.Logs) },
+                    pendingDeleteLog = pendingDeleteLog,
+                    onDeleteLog = logsViewModel::deleteLog,
+                    onUndoDelete = logsViewModel::undoDelete,
+                    onNavigateToEdit = navigateToEdit
                 )
             }
 
@@ -175,15 +197,7 @@ Scaffold(
                     viewModel = hiltViewModel(activity),
                     autoHideTitleBar = autoHideTitleBar,
                     fullScreenStatusBar = fullScreenStatusBar,
-                    onNavigateToEdit = { log ->
-                        val route = when (log) {
-                            is LogItem.Fuel -> Screen.AddFillUp.edit(log.id)
-                            is LogItem.Service -> Screen.AddService.edit(log.id)
-                            is LogItem.Expense -> Screen.AddExpense.edit(log.id)
-                            is LogItem.Trip -> Screen.AddTrip.edit(log.id)
-                        }
-                        navController.navigate(route)
-                    }
+                    onNavigateToEdit = navigateToEdit
                 )
             }
 
@@ -319,6 +333,9 @@ Scaffold(
         }
     }
 }
+
+/** Space a screen's bottom snackbar needs to clear the floating nav bar (72dp bar + 24dp gap + margin). */
+val FloatingNavBarClearance = 104.dp
 
 @Composable
 fun FloatingNavigationBar(
