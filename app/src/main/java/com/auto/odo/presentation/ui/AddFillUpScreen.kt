@@ -13,6 +13,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -88,7 +91,7 @@ fun AddFillUpContent(
     onPartialTankChanged: (Boolean) -> Unit,
     onStationNameChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
-    onReceiptAttached: (String?) -> Unit,
+    onReceiptAttached: (Uri?) -> Unit,
     onScanOdometer: (Uri) -> Unit,
     onScanPump: (Uri) -> Unit,
     onLiveResult: (LiveScanResult) -> Unit,
@@ -99,7 +102,7 @@ fun AddFillUpContent(
     val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val receiptPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        onReceiptAttached(uri?.toString())
+        if (uri != null) onReceiptAttached(uri)
     }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.scanMessage) {
@@ -339,14 +342,17 @@ fun AddFillUpContent(
                 contentAlignment = Alignment.Center
             ) {
                 if (uiState.receiptPath != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    AsyncImage(
+                        model = uiState.receiptPath,
+                        contentDescription = "Receipt (tap to change)",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    FilledTonalIconButton(
+                        onClick = { onReceiptAttached(null) },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(32.dp)
                     ) {
-                        Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Receipt attached", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text("Tap to change", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Default.Close, contentDescription = "Remove receipt", modifier = Modifier.size(18.dp))
                     }
                 } else {
                     Column(

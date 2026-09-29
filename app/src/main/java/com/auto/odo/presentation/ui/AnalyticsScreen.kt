@@ -13,7 +13,14 @@ import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material3.*
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +38,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.auto.odo.presentation.viewmodel.AnalyticsViewModel
+import com.auto.odo.presentation.viewmodel.TripRange
+import com.auto.odo.presentation.viewmodel.TripSummary
+import java.text.SimpleDateFormat
+import java.util.Locale
 import com.auto.odo.presentation.viewmodel.currencySymbol
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,9 +51,17 @@ fun AnalyticsScreen(
     fullScreenStatusBar: Boolean
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.exportMessage) {
+        uiState.exportMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onExportMessageShown()
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = if (fullScreenStatusBar) WindowInsets(0, 0, 0, 0) else ScaffoldDefaults.contentWindowInsets,
         containerColor = MaterialTheme.colorScheme.background, 
         topBar = {
@@ -287,6 +306,75 @@ fun AnalyticsScreen(
                         }
                     }
 
+                    // SECTION 3.5: Fuel price history (single vehicle — currencies can't mix)
+                    if (!uiState.isAllVehiclesSelected && uiState.pricePoints.isNotEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text("Fuel Price History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    Text("Tap a point for details", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    BezierChart(
+                                        points = uiState.pricePoints,
+                                        dateFormatter = remember { SimpleDateFormat("dd MMM yy", Locale.getDefault()) },
+                                        valueLabel = { "$sym${"%.2f".format(it)}/$fuelUnitLabel" },
+                                        modifier = Modifier.fillMaxWidth().height(160.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 3.6: Per-station stats
+                    if (!uiState.isAllVehiclesSelected && uiState.stationStats.isNotEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Stations", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                    val cheapest = uiState.stationStats.minOf { it.avgPrice }
+                                    uiState.stationStats.forEach { st ->
+                                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(st.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(
+                                                    "${st.fillUps} fill-ups · $sym${"%.0f".format(st.totalSpent)} spent" +
+                                                        (st.avgEfficiency?.let { " · ${"%.1f".format(it)} $dist/$fuelUnitLabel" } ?: ""),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            Text(
+                                                "$sym${"%.2f".format(st.avgPrice)}/$fuelUnitLabel",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (uiState.stationStats.size > 1 && st.avgPrice == cheapest) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // SECTION 3.7: Business vs personal trips + mileage-claim export
+                    if (!uiState.isAllVehiclesSelected) {
+                        item {
+                            TripReportCard(
+                                range = uiState.tripRange,
+                                summary = uiState.tripSummary,
+                                distanceUnit = dist,
+                                onRangeChange = viewModel::setTripRange,
+                                onExport = viewModel::exportBusinessTrips
+                            )
+                        }
+                    }
+
                     // SECTION 4: Fuel Economics Grid
                     item {
                         Column {
@@ -347,6 +435,49 @@ fun AnalyticsScreen(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TripReportCard(
+    range: TripRange,
+    summary: TripSummary,
+    distanceUnit: String,
+    onRangeChange: (TripRange) -> Unit,
+    onExport: (Uri) -> Unit
+) {
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        uri?.let(onExport)
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Trips", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TripRange.entries.forEach { r ->
+                    FilterChip(selected = r == range, onClick = { onRangeChange(r) }, label = { Text(r.label) })
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MiniStatCard(modifier = Modifier.weight(1f), title = "Business", value = "%.0f".format(summary.businessDistance), subtitle = "$distanceUnit · ${summary.businessTrips} trips")
+                MiniStatCard(modifier = Modifier.weight(1f), title = "Personal", value = "%.0f".format(summary.personalDistance), subtitle = "$distanceUnit · ${summary.personalTrips} trips")
+            }
+            OutlinedButton(
+                onClick = { exportLauncher.launch("mileage_claim_${range.name.lowercase()}.csv") },
+                enabled = summary.businessTrips > 0,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Export business trips (CSV)")
             }
         }
     }

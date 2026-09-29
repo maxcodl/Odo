@@ -4,7 +4,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
 import com.auto.odo.data.dao.*
+import com.auto.odo.data.entity.FuelLogEntity
+import com.auto.odo.data.entity.TripLogEntity
 import com.auto.odo.data.entity.VehicleEntity
+import android.content.Context
+import android.net.Uri
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -19,6 +29,56 @@ data class MonthlyChartPoint(
     val expenseCost: Double,
     val totalCost: Double
 )
+
+data class StationStat(
+    val name: String,
+    val fillUps: Int,
+    val totalSpent: Double,
+    val avgPrice: Double, // per display fuel unit
+    val avgEfficiency: Double? // display distance per display fuel unit; null without two consecutive full fills
+)
+
+enum class TripRange(val label: String) { THIS_MONTH("This month"), LAST_MONTH("Last month"), THIS_YEAR("This year"), ALL("All time") }
+
+data class TripSummary(
+    val businessDistance: Double = 0.0,
+    val personalDistance: Double = 0.0,
+    val businessTrips: Int = 0,
+    val personalTrips: Int = 0
+)
+
+/**
+ * Groups fills by station name (case-insensitive). A full-to-full segment's efficiency is credited
+ * to the station of the fill that started it, since that's the fuel burnt over the segment.
+ * [logs] must be sorted by odometer; distances/volumes are in stored units (km, L).
+ */
+internal fun computeStationStats(
+    logs: List<FuelLogEntity>,
+    toDist: (Double) -> Double,
+    toVol: (Double) -> Double
+): List<StationStat> {
+    val effByIndex = logs.indices.associateWith { i ->
+        val next = logs.getOrNull(i + 1) ?: return@associateWith null
+        val delta = next.odometer - logs[i].odometer
+        if (logs[i].isPartialTank || next.isPartialTank || delta <= 0 || next.quantity <= 0) null
+        else toDist(delta) / toVol(next.quantity)
+    }
+    return logs.indices
+        .filter { !logs[it].stationName.isNullOrBlank() }
+        .groupBy { logs[it].stationName!!.trim().lowercase() }
+        .map { (_, idx) ->
+            val fills = idx.map { logs[it] }
+            val effs = idx.mapNotNull { effByIndex[it] }
+            StationStat(
+                name = fills.first().stationName!!.trim(),
+                fillUps = fills.size,
+                totalSpent = fills.sumOf { it.totalCost },
+                avgPrice = fills.sumOf { it.totalCost } / toVol(fills.sumOf { it.quantity }),
+                avgEfficiency = effs.takeIf { it.isNotEmpty() }?.average()
+            )
+        }
+        .sortedByDescending { it.fillUps }
+}
 
 data class AnalyticsUiState(
     val allVehicles: List<VehicleEntity> = emptyList(),
@@ -60,7 +120,14 @@ data class AnalyticsUiState(
     val selectedMonthWindowIndex: Int = 0,
     val hasMoreOlderMonths: Boolean = false,
     val hasMoreNewerMonths: Boolean = false,
+
+    // Single-vehicle only: mixing vehicles would mix currencies and units
+    val pricePoints: List<ChartPoint> = emptyList(),
+    val stationStats: List<StationStat> = emptyList(),
+    val tripRange: TripRange = TripRange.THIS_MONTH,
+    val tripSummary: TripSummary = TripSummary(),
     
+    val exportMessage: String? = null,
     val isLoading: Boolean = true
 )
 
@@ -69,8 +136,13 @@ class AnalyticsViewModel @Inject constructor(
     private val vehicleDao: VehicleDao,
     private val fuelLogDao: FuelLogDao,
     private val serviceLogDao: ServiceLogDao,
-    private val expenseLogDao: ExpenseLogDao
+    private val expenseLogDao: ExpenseLogDao,
+    private val tripLogDao: TripLogDao,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    // Trips of the selected vehicle, kept for range changes and export
+    private var vehicleTrips: List<TripLogEntity> = emptyList()
 
     private val _uiState = MutableStateFlow(AnalyticsUiState())
     val uiState = _uiState.asStateFlow()
@@ -236,6 +308,20 @@ class AnalyticsViewModel @Inject constructor(
                 val expenseCostPerDistUnit = if (sumDisplayDistance > 0) sumExpenseCost / sumDisplayDistance else 0.0
                 val fuelCostPerMonth = sumFuelCostPerDay * 30.4
 
+                val singleVehicle = targetVehicle.takeUnless { isAll }
+                var pricePoints = emptyList<ChartPoint>()
+                var stationStats = emptyList<StationStat>()
+                vehicleTrips = emptyList()
+                if (singleVehicle != null) {
+                    val toDist: (Double) -> Double = { if (singleVehicle.distanceUnit == "miles") UnitConverter.kmToMiles(it) else it }
+                    val toVol: (Double) -> Double = { if (singleVehicle.fuelUnit == "Gallons") UnitConverter.litersToGallons(it) else it }
+                    val logs = fuelLogDao.getFuelLogsSortedByOdometer(singleVehicle.id)
+                    pricePoints = logs.filter { it.quantity > 0 }.sortedBy { it.date }
+                        .map { ChartPoint(it.date, it.totalCost / toVol(it.quantity)) }
+                    stationStats = computeStationStats(logs, toDist, toVol)
+                    vehicleTrips = tripLogDao.getAllTripLogs().filter { it.vehicleId == singleVehicle.id }
+                }
+
                 val displayVehicle = if (isAll) {
                     VehicleEntity(id = -1, name = "All Vehicles", type = "All", fuelUnit = baseFuelUnit, distanceUnit = baseDistUnit, currency = baseCurrency)
                 } else targetVehicle
@@ -269,6 +355,9 @@ class AnalyticsViewModel @Inject constructor(
                         longestDistanceBetweenFills = overallLongestDelta,
                         shortestDistanceBetweenFills = uiShortestDelta,
                         allMonthlyData = allDataSorted,
+                        pricePoints = pricePoints,
+                        stationStats = stationStats,
+                        tripSummary = summarizeTrips(it.tripRange, singleVehicle),
                         isLoading = false
                     )
                 }
@@ -276,6 +365,72 @@ class AnalyticsViewModel @Inject constructor(
                 updateMonthWindow(_uiState.value.selectedMonthWindowIndex)
             }
         }
+    }
+
+    private fun tripsInRange(range: TripRange): List<TripLogEntity> {
+        fun startOfMonth(monthsBack: Int): Long = Calendar.getInstance().apply {
+            add(Calendar.MONTH, -monthsBack)
+            set(Calendar.DAY_OF_MONTH, 1)
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val (from, to) = when (range) {
+            TripRange.THIS_MONTH -> startOfMonth(0) to Long.MAX_VALUE
+            TripRange.LAST_MONTH -> startOfMonth(1) to startOfMonth(0)
+            TripRange.THIS_YEAR -> startOfMonth(Calendar.getInstance().get(Calendar.MONTH)) to Long.MAX_VALUE
+            TripRange.ALL -> Long.MIN_VALUE to Long.MAX_VALUE
+        }
+        return vehicleTrips.filter { it.date in from until to }
+    }
+
+    private fun distConverter(vehicle: VehicleEntity?): (Double) -> Double =
+        { if (vehicle?.distanceUnit == "miles") UnitConverter.kmToMiles(it) else it }
+
+    private fun summarizeTrips(range: TripRange, vehicle: VehicleEntity?): TripSummary {
+        val toDist = distConverter(vehicle)
+        val (business, personal) = tripsInRange(range).partition { it.purpose == "Business" }
+        return TripSummary(
+            businessDistance = business.sumOf { toDist(it.endOdo - it.startOdo) },
+            personalDistance = personal.sumOf { toDist(it.endOdo - it.startOdo) },
+            businessTrips = business.size,
+            personalTrips = personal.size
+        )
+    }
+
+    fun setTripRange(range: TripRange) {
+        _uiState.update { it.copy(tripRange = range, tripSummary = summarizeTrips(range, it.activeVehicle)) }
+    }
+
+    /** Business trips in the selected range, written as a mileage-claim CSV. */
+    fun exportBusinessTrips(uri: Uri) {
+        val state = _uiState.value
+        val vehicle = state.activeVehicle ?: return
+        val unit = vehicle.distanceUnit
+        val toDist = distConverter(vehicle)
+        val trips = tripsInRange(state.tripRange).filter { it.purpose == "Business" }.sortedBy { it.date }
+        val dateFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        fun esc(v: String) = "\"" + v.replace("\"", "\"\"") + "\""
+        fun num(v: Double, decimals: Int) = String.format(Locale.US, "%.${decimals}f", v)
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)!!.bufferedWriter().use { w ->
+                    w.write("Date,Vehicle,Start Odometer ($unit),End Odometer ($unit),Distance ($unit),Notes\n")
+                    trips.forEach { t ->
+                        w.write(listOf(
+                            dateFmt.format(Date(t.date)), esc(vehicle.name),
+                            num(toDist(t.startOdo), 0), num(toDist(t.endOdo), 0),
+                            num(toDist(t.endOdo - t.startOdo), 1), esc(t.notes ?: "")
+                        ).joinToString(",") + "\n")
+                    }
+                    w.write(",,,Total,${num(trips.sumOf { toDist(it.endOdo - it.startOdo) }, 1)},\n")
+                }
+            }.isSuccess
+            _uiState.update { it.copy(exportMessage = if (ok) "Exported ${trips.size} business trips" else "Export failed") }
+        }
+    }
+
+    fun onExportMessageShown() {
+        _uiState.update { it.copy(exportMessage = null) }
     }
 
     fun selectVehicle(vehicleId: Long) {

@@ -55,7 +55,9 @@ Track fuel, services, expenses and trips — or just point your camera at the pu
 ### 📊 Insight
 
 - **Home dashboard** — 30-day fuel cost, fill-up count, efficiency trend chart, and a recent-activity feed you can tap into, edit, or delete (with undo).
-- **Analytics** — total running cost, cost per km, projected yearly cost, cost breakdown donut, and a **monthly spend chart with amounts on every bar**.
+- **Analytics** — total running cost, cost per km, projected yearly cost, cost breakdown donut, and a **monthly spend chart with amounts on every bar**, fuel price history, and per-station price & efficiency.
+- **Trip report** — business vs personal distance by month or year, with a mileage-claim CSV export.
+- **Receipt photos** — attached receipts are stored privately in the app and shown on the fill-up.
 - **Multi-vehicle** — cars and bikes, each with its own distance unit, fuel unit and currency; view one vehicle or all combined.
 
 ### 🔒 Your data

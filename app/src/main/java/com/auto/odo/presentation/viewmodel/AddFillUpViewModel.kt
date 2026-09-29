@@ -247,9 +247,30 @@ class AddFillUpViewModel @Inject constructor(
         _uiState.update { it.copy(notes = notes) }
     }
 
-    fun onReceiptAttached(path: String?) {
-        _uiState.update { it.copy(receiptPath = path) }
-        if (path != null) scanFuelValues(Uri.parse(path))
+    fun onReceiptAttached(uri: Uri?) {
+        if (uri == null) {
+            _uiState.update { it.copy(receiptPath = null) }
+            return
+        }
+        viewModelScope.launch {
+            // Picker URIs lose read permission once the process dies, so keep a private copy
+            val file = try {
+                withContext(Dispatchers.IO) {
+                    val dir = java.io.File(context.filesDir, "receipts").apply { mkdirs() }
+                    java.io.File(dir, "receipt_${System.currentTimeMillis()}.jpg").also { out ->
+                        context.contentResolver.openInputStream(uri)!!.use { input ->
+                            out.outputStream().use { input.copyTo(it) }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(scanMessage = "Couldn't attach receipt: ${e.message}") }
+                return@launch
+            }
+            val saved = Uri.fromFile(file)
+            _uiState.update { it.copy(receiptPath = saved.toString()) }
+            scanFuelValues(saved)
+        }
     }
 
     fun onScanMessageShown() {
