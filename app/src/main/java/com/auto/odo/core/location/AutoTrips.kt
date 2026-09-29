@@ -144,7 +144,7 @@ class TripRecorderService : Service() {
         private const val EXIT_GRACE_MS = 3 * 60_000L
         private const val IDLE_TIMEOUT_MS = 10 * 60_000L
         private const val MIN_TRIP_M = 500.0
-        private const val MAX_ACCURACY_M = 50f
+        private const val MAX_ACCURACY_M = 25f // wifi/cell-grade fixes are too coarse for distance
         private const val MIN_STEP_M = 20f
 
         @Volatile
@@ -233,12 +233,16 @@ class TripRecorderService : Service() {
     }
 
     private fun onLocation(loc: Location) {
-        if (!running || (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY_M)) return
+        if (!running || !loc.hasAccuracy() || loc.accuracy > MAX_ACCURACY_M) return
         val last = points.lastOrNull()
         if (last != null) {
             val step = last.distanceTo(loc)
-            if (step < MIN_STEP_M) return // GPS jitter while standing still
+            val seconds = (loc.elapsedRealtimeNanos - last.elapsedRealtimeNanos) / 1e9
+            val speed = if (loc.hasSpeed()) loc.speed else null
+            if (!isRealMovement(step, seconds, speed, last.accuracy + loc.accuracy)) return
             distanceM += step
+        } else if (loc.hasSpeed() && loc.speed < 2f) {
+            return // don't anchor the route on a fix taken while still parked
         }
         points += loc
         lastMoveAt = SystemClock.elapsedRealtime()

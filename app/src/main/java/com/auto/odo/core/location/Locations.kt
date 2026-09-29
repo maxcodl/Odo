@@ -37,6 +37,18 @@ fun distanceMeters(a: LatLon, b: LatLon): Double {
     return 2 * 6_371_000.0 * asin(sqrt(h))
 }
 
+/**
+ * Whether a GPS step is real travel rather than drift. Parked, fixes wander tens of metres but
+ * the GPS's own (Doppler) speed stays near zero, so trust that when present; otherwise require the
+ * step to beat both fixes' combined error. Rejected fixes aren't recorded, so the next step is
+ * measured from the last accepted point and slow real movement still adds up.
+ */
+fun isRealMovement(stepM: Float, seconds: Double, speedMps: Float?, combinedAccuracyM: Float): Boolean {
+    if (speedMps != null && speedMps < 2f) return false // under ~7 km/h: parked or crawling
+    if (stepM < maxOf(20f, combinedAccuracyM)) return false
+    return seconds <= 0 || stepM / seconds < 70 // over ~250 km/h: a bad fix, not a drive
+}
+
 /** Trip routes are stored as "lat,lon;lat,lon;…" with 5 decimals (~1 m). */
 object Route {
     fun encode(points: List<LatLon>): String =
