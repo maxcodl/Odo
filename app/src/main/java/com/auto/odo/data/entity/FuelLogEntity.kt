@@ -28,5 +28,8 @@ data class FuelLogEntity(
     val isPartialTank: Boolean,
     val stationName: String?,
     val notes: String?,
-    val receiptPath: String?
+    val receiptPath: String?,
+    // Where the fill-up was logged, when location was available
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

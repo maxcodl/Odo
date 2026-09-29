@@ -161,6 +161,11 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")
 
+    // GPS fixes + driving detection (Activity Recognition) for pump lookup and automatic trips; no API key
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    // OpenStreetMap map view for trip routes / fill-up locations; no API key
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+
     // DocumentFile (SAF)
     implementation(libs.androidx.documentfile)
 }

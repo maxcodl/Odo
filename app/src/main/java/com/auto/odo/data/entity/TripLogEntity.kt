@@ -24,5 +24,9 @@ data class TripLogEntity(
     val startOdo: Double, // Always stored in kilometers
     val endOdo: Double, // Always stored in kilometers
     val purpose: String, // "Business" or "Personal"
-    val notes: String?
+    val notes: String?,
+    // Recorded GPS route (see core.location.Route) and reverse-geocoded place names; auto trips only
+    val route: String? = null,
+    val startPlace: String? = null,
+    val endPlace: String? = null
 )

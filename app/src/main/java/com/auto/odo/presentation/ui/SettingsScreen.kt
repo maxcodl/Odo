@@ -201,6 +201,21 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            // ── Location ─────────────────────────────────────────────────────
+            SectionLabel("Location")
+
+            val pumpLookup by viewModel.pumpLookupEnabled.collectAsStateWithLifecycle()
+            val autoTrips by viewModel.autoTripsEnabled.collectAsStateWithLifecycle()
+            LocationSettingsCard(
+                pumpLookup = pumpLookup,
+                onPumpLookupChange = viewModel::setPumpLookupEnabled,
+                autoTrips = autoTrips,
+                onAutoTripsChange = viewModel::setAutoTripsEnabled,
+                onPermissionsChanged = viewModel::resyncAutoTrips
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             // ── Data Management ───────────────────────────────────────────────
             SectionLabel("Data Management")
 
@@ -684,7 +699,7 @@ PreferenceSwitchRow(
 }
 
 @Composable
-private fun PreferenceRow(
+internal fun PreferenceRow(
     icon: ImageVector,
     iconColor: Color,
     title: String,
@@ -717,7 +732,7 @@ private fun PreferenceRow(
 }
 
 @Composable
-private fun PreferenceSwitchRow(
+internal fun PreferenceSwitchRow(
     icon: ImageVector,
     iconColor: Color,
     title: String,

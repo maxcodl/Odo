@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.UnitConverter
 import com.auto.odo.core.UserSessionManager
+import com.auto.odo.core.location.LatLon
+import com.auto.odo.core.location.Route
 import com.auto.odo.data.entity.TripLogEntity
 import com.auto.odo.data.entity.VehicleEntity
 import com.auto.odo.domain.repository.FuelLogRepository
@@ -31,7 +33,11 @@ data class AddTripUiState(
     val odoError: String? = null,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
-    val isEditMode: Boolean = false
+    val isEditMode: Boolean = false,
+    // Automatically recorded trips only
+    val route: List<LatLon> = emptyList(),
+    val startPlace: String? = null,
+    val endPlace: String? = null
 )
 
 @HiltViewModel
@@ -76,7 +82,10 @@ class AddTripViewModel @Inject constructor(
                                         endOdo = String.format(java.util.Locale.US, "%.1f", endDisplay),
                                         distanceDisplay = String.format(java.util.Locale.US, "%.1f", diff),
                                         purpose = existing.purpose,
-                                        notes = existing.notes ?: ""
+                                        notes = existing.notes ?: "",
+                                        route = Route.decode(existing.route),
+                                        startPlace = existing.startPlace,
+                                        endPlace = existing.endPlace
                                     )
                                 }
                             }
@@ -257,7 +266,10 @@ class AddTripViewModel @Inject constructor(
                 startOdo = standardStart,
                 endOdo = standardEnd,
                 purpose = state.purpose,
-                notes = state.notes.ifBlank { null }
+                notes = state.notes.ifBlank { null },
+                route = originalLog?.route,
+                startPlace = originalLog?.startPlace,
+                endPlace = originalLog?.endPlace
             )
 
             if (originalLog != null) {

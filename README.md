@@ -58,11 +58,17 @@ Track fuel, services, expenses and trips — or just point your camera at the pu
 - **Analytics** — total running cost, cost per km, projected yearly cost, cost breakdown donut, and a **monthly spend chart with amounts on every bar**, fuel price history, and per-station price & efficiency.
 - **Trip report** — business vs personal distance by month or year, with a mileage-claim CSV export.
 - **Receipt photos** — attached receipts are stored privately in the app and shown on the fill-up.
+
+### 📍 Location (optional, both can be switched off in Settings)
+
+- **Pump detection** — logging a fill-up takes a GPS fix and fills in the station: first from stations you've logged within 150 m (offline), otherwise the nearest fuel station on OpenStreetMap. The spot is shown on a map.
+- **Automatic trip log** — driving is detected with the phone's low-power motion sensors; GPS runs only while driving, and the trip is saved with its route, distance and start/end place names. Discard a trip from its notification.
+- **No API keys** — maps are OpenStreetMap via osmdroid, station lookup uses the public Overpass API, place names use Android's built-in Geocoder.
 - **Multi-vehicle** — cars and bikes, each with its own distance unit, fuel unit and currency; view one vehicle or all combined.
 
 ### 🔒 Your data
 
-- **Offline-first** Room database — the app works fully without a network.
+- **Offline-first** Room database — the app works fully without a network. The optional location features above are the only parts that go online (your coordinates are sent to OpenStreetMap / Android's geocoder).
 - **Google Drive backup** on a WorkManager schedule, into the app's private Drive folder.
 - **CSV import / export** for spreadsheets or migrating from other apps.
 
