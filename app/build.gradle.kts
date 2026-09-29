@@ -18,8 +18,8 @@ android {
         applicationId = "com.auto.odo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.6"
+        versionCode = 6
+        versionName = "1.0.7"
 
         // Phones only: drops the x86 emulator/Chromebook copies of native libraries
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
