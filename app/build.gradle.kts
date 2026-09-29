@@ -18,8 +18,8 @@ android {
         applicationId = "com.auto.odo"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.6"
+        versionCode = 6
+        versionName = "1.0.7"
 
         // Phones only: drops the x86 emulator/Chromebook copies of native libraries
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
@@ -160,6 +160,11 @@ dependencies {
     implementation("androidx.camera:camera-camera2:1.4.2")
     implementation("androidx.camera:camera-lifecycle:1.4.2")
     implementation("androidx.camera:camera-view:1.4.2")
+
+    // GPS fixes + driving detection (Activity Recognition) for pump lookup and automatic trips; no API key
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    // OpenStreetMap map view for trip routes / fill-up locations; no API key
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
 
     // DocumentFile (SAF)
     implementation(libs.androidx.documentfile)

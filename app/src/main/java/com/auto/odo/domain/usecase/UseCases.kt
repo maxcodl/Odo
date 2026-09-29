@@ -61,7 +61,10 @@ sealed class LogItem {
         val startOdo: Double,
         val endOdo: Double,
         val purpose: String,
-        override val notes: String?
+        override val notes: String?,
+        val route: String? = null,
+        val startPlace: String? = null,
+        val endPlace: String? = null
     ) : LogItem() {
         override val totalCost: Double get() = 0.0
     }
@@ -71,7 +74,7 @@ sealed class LogItem {
 fun FuelLogEntity.toLogItem() = LogItem.Fuel(id, vehicleId, date, odometer, quantity, pricePerUnit, totalCost, isPartialTank, stationName, notes, receiptPath)
 fun ServiceLogEntity.toLogItem() = LogItem.Service(id, vehicleId, date, odometer, serviceType, totalCost, notes)
 fun ExpenseLogEntity.toLogItem() = LogItem.Expense(id, vehicleId, date, category, totalCost, notes)
-fun TripLogEntity.toLogItem() = LogItem.Trip(id, vehicleId, date, startOdo, endOdo, purpose, notes)
+fun TripLogEntity.toLogItem() = LogItem.Trip(id, vehicleId, date, startOdo, endOdo, purpose, notes, route, startPlace, endPlace)
 
 // 2. Metrics Use Case
 @Immutable

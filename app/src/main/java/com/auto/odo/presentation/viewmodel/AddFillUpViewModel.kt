@@ -26,6 +26,11 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.auto.odo.core.location.OsmStations
+import com.auto.odo.core.location.currentLocation
+import com.auto.odo.core.location.hasLocationPermission
+import com.auto.odo.core.location.nearestSavedStation
+import com.auto.odo.data.dao.FuelLogDao
 
 
 @Immutable
@@ -47,7 +52,12 @@ data class AddFillUpUiState(
     val saveSuccess: Boolean = false,
     val isEditMode: Boolean = false,
     val isScanning: Boolean = false,
-    val scanMessage: String? = null
+    val scanMessage: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val isLocating: Boolean = false,
+    // New fill-up with pump lookup on: the screen asks for location permission if it's missing
+    val autoLocate: Boolean = false
 ) {
     // Editing an older log can legitimately be below the latest reading, so no floor there
     val odometerScanFloor: Double get() = if (isEditMode) 0.0 else lastKnownOdometer
@@ -59,6 +69,7 @@ class AddFillUpViewModel @Inject constructor(
     private val fuelRepo: FuelLogRepository,
     private val sessionManager: UserSessionManager,
     private val validateOdometer: ValidateOdometerUseCase,
+    private val fuelLogDao: FuelLogDao,
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
@@ -99,7 +110,9 @@ class AddFillUpViewModel @Inject constructor(
                                         isPartialTank = existing.isPartialTank,
                                         stationName = existing.stationName ?: "",
                                         notes = existing.notes ?: "",
-                                        receiptPath = existing.receiptPath
+                                        receiptPath = existing.receiptPath,
+                                        latitude = existing.latitude,
+                                        longitude = existing.longitude
                                     )
                                 }
                             }
@@ -121,6 +134,10 @@ class AddFillUpViewModel @Inject constructor(
                                     odometer = if (lastOdoDisplay > 0)
                                         String.format(java.util.Locale.US, "%.0f", lastOdoDisplay) else ""
                                 )
+                            }
+                            if (sessionManager.pumpLookupEnabled.first()) {
+                                _uiState.update { it.copy(autoLocate = true) }
+                                if (hasLocationPermission(context)) locatePump()
                             }
                         }
                     }
@@ -247,9 +264,53 @@ class AddFillUpViewModel @Inject constructor(
         _uiState.update { it.copy(notes = notes) }
     }
 
-    fun onReceiptAttached(path: String?) {
-        _uiState.update { it.copy(receiptPath = path) }
-        if (path != null) scanFuelValues(Uri.parse(path))
+    fun onReceiptAttached(uri: Uri?) {
+        if (uri == null) {
+            _uiState.update { it.copy(receiptPath = null) }
+            return
+        }
+        viewModelScope.launch {
+            // Picker URIs lose read permission once the process dies, so keep a private copy
+            val file = try {
+                withContext(Dispatchers.IO) {
+                    val dir = java.io.File(context.filesDir, "receipts").apply { mkdirs() }
+                    java.io.File(dir, "receipt_${System.currentTimeMillis()}.jpg").also { out ->
+                        context.contentResolver.openInputStream(uri)!!.use { input ->
+                            out.outputStream().use { input.copyTo(it) }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(scanMessage = "Couldn't attach receipt: ${e.message}") }
+                return@launch
+            }
+            val saved = Uri.fromFile(file)
+            _uiState.update { it.copy(receiptPath = saved.toString()) }
+            scanFuelValues(saved)
+        }
+    }
+
+    /** GPS fix → station you've logged here before, else nearest OpenStreetMap fuel station. */
+    fun locatePump() {
+        if (_uiState.value.isLocating) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLocating = true) }
+            val here = currentLocation(context)
+            if (here == null) {
+                _uiState.update { it.copy(isLocating = false, scanMessage = "Couldn't get your location — is GPS on?") }
+                return@launch
+            }
+            _uiState.update { it.copy(latitude = here.lat, longitude = here.lon) }
+            val name = nearestSavedStation(fuelLogDao.getAllFuelLogs(), here) ?: OsmStations.nearest(here)
+            _uiState.update {
+                when {
+                    name == null -> it.copy(isLocating = false, scanMessage = "No pump found nearby — location saved")
+                    it.stationName.isNotBlank() && !it.stationName.equals(name, ignoreCase = true) ->
+                        it.copy(isLocating = false, scanMessage = "Nearby pump: $name (kept your entry)")
+                    else -> it.copy(isLocating = false, stationName = name)
+                }
+            }
+        }
     }
 
     fun onScanMessageShown() {
@@ -381,7 +442,9 @@ class AddFillUpViewModel @Inject constructor(
                     isPartialTank = state.isPartialTank,
                     stationName = state.stationName.ifBlank { null },
                     notes = state.notes.ifBlank { null },
-                    receiptPath = state.receiptPath
+                    receiptPath = state.receiptPath,
+                    latitude = state.latitude,
+                    longitude = state.longitude
                 )
 
                 if (originalLog != null) {

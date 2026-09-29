@@ -1,6 +1,11 @@
 package com.auto.odo.presentation.viewmodel
 
+import android.content.Context
 import android.net.Uri
+import com.auto.odo.core.location.AutoTrips
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.auto.odo.core.NavBarStyle
@@ -92,8 +97,30 @@ class SettingsViewModel @Inject constructor(
     private val vehicleRepo: VehicleRepository,
     private val sessionManager: UserSessionManager,
     private val importDataUseCase: ImportDataUseCase,
-    private val exportDataUseCase: ExportDataUseCase
+    private val exportDataUseCase: ExportDataUseCase,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    val pumpLookupEnabled: StateFlow<Boolean> =
+        sessionManager.pumpLookupEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, true)
+    val autoTripsEnabled: StateFlow<Boolean> =
+        sessionManager.autoTripsEnabled.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    fun setPumpLookupEnabled(enabled: Boolean) {
+        viewModelScope.launch { sessionManager.setPumpLookupEnabled(enabled) }
+    }
+
+    fun setAutoTripsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            sessionManager.setAutoTripsEnabled(enabled)
+            AutoTrips.sync(context)
+        }
+    }
+
+    /** Call after the user returns from a permission prompt or system settings. */
+    fun resyncAutoTrips() {
+        viewModelScope.launch { AutoTrips.sync(context) }
+    }
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()

@@ -222,6 +222,15 @@ interface TripLogDao {
     @Query("SELECT * FROM trip_logs ORDER BY date ASC")
     suspend fun getAllTripLogs(): List<TripLogEntity>
 
+    /** Highest odometer known from any log type (odometer updates are stored as service logs). */
+    @Query(
+        "SELECT MAX(v) FROM (" +
+            "SELECT MAX(odometer) AS v FROM fuel_logs WHERE vehicleId = :vehicleId " +
+            "UNION ALL SELECT MAX(odometer) FROM service_logs WHERE vehicleId = :vehicleId " +
+            "UNION ALL SELECT MAX(endOdo) FROM trip_logs WHERE vehicleId = :vehicleId)"
+    )
+    suspend fun getLatestOdometer(vehicleId: Long): Double?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(logs: List<TripLogEntity>): List<Long>
 

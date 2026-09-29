@@ -426,10 +426,8 @@ fun DashboardContent(
 
                     BezierChart(
                         points = uiState.chartPoints,
-                        distanceUnit = vehicle.distanceUnit,
-                        fuelUnit = vehicle.fuelUnit,
                         dateFormatter = chartDateFormatter,
-                        efficiencyFormat = efficiencyFormat,
+                        valueLabel = { "${efficiencyFormat.format(it)} ${vehicle.distanceUnit}/${if (vehicle.fuelUnit == "Liters") "L" else "gal"}" },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp)
@@ -525,10 +523,8 @@ fun MetricCard(
 @Composable
 fun BezierChart(
     points: List<ChartPoint>,
-    distanceUnit: String,
-    fuelUnit: String,
     dateFormatter: SimpleDateFormat,
-    efficiencyFormat: String,
+    valueLabel: (Double) -> String,
     modifier: Modifier = Modifier
 ) {
     if (points.size < 2) {
@@ -623,7 +619,7 @@ fun BezierChart(
             ) {
                 Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(dateFormatter.format(Date(point.date)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("${efficiencyFormat.format(point.value)} $distanceUnit/${if(fuelUnit == "Liters") "L" else "gal"}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(valueLabel(point.value), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                     Icon(Icons.Default.Close, null, modifier = Modifier.size(14.dp).clickable { selectedIndex = -1 }, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
             }

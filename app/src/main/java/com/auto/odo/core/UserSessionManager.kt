@@ -27,6 +27,22 @@ class UserSessionManager(private val context: Context) {
         
         // NEW: Key for the vehicle icon toggle
         private val SHOW_VEHICLE_ICON = booleanPreferencesKey("show_vehicle_icon")
+        private val PUMP_LOOKUP = booleanPreferencesKey("pump_lookup")
+        private val AUTO_TRIPS = booleanPreferencesKey("auto_trips")
+    }
+
+    /** Fill in the station name from GPS at fill-up time. */
+    val pumpLookupEnabled: Flow<Boolean> = context.dataStore.data.map { it[PUMP_LOOKUP] ?: true }
+
+    /** Record trips automatically when driving is detected. Off by default: costs battery. */
+    val autoTripsEnabled: Flow<Boolean> = context.dataStore.data.map { it[AUTO_TRIPS] ?: false }
+
+    suspend fun setPumpLookupEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PUMP_LOOKUP] = enabled }
+    }
+
+    suspend fun setAutoTripsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[AUTO_TRIPS] = enabled }
     }
 
     val currentVehicleId: Flow<Long?> = context.dataStore.data.map { preferences ->

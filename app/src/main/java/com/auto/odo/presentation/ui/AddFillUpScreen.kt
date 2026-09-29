@@ -13,6 +13,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import com.auto.odo.core.location.LatLon
+import com.auto.odo.core.location.hasLocationPermission
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -68,6 +76,7 @@ fun AddFillUpScreen(
             }
         },
         onScanMessageShown = viewModel::onScanMessageShown,
+        onLocatePump = viewModel::locatePump,
         onSaveFillUp = viewModel::saveFillUp,
         onClearForm = viewModel::clearForm
     )
@@ -88,18 +97,31 @@ fun AddFillUpContent(
     onPartialTankChanged: (Boolean) -> Unit,
     onStationNameChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
-    onReceiptAttached: (String?) -> Unit,
+    onReceiptAttached: (Uri?) -> Unit,
     onScanOdometer: (Uri) -> Unit,
     onScanPump: (Uri) -> Unit,
     onLiveResult: (LiveScanResult) -> Unit,
     onScanMessageShown: () -> Unit,
+    onLocatePump: () -> Unit,
     onSaveFillUp: () -> Unit,
     onClearForm: () -> Unit
 ) {
     val scrollState = rememberScrollState()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val receiptPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        onReceiptAttached(uri?.toString())
+        if (uri != null) onReceiptAttached(uri)
+    }
+    val context = LocalContext.current
+    val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) onLocatePump()
+    }
+    val locatePump = {
+        if (hasLocationPermission(context)) onLocatePump()
+        else locationPermission.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+    // Ask once per new fill-up; the ViewModel already located if permission was granted
+    LaunchedEffect(uiState.autoLocate) {
+        if (uiState.autoLocate && !hasLocationPermission(context)) locatePump()
     }
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.scanMessage) {
@@ -313,8 +335,23 @@ fun AddFillUpContent(
                 value = uiState.stationName,
                 onValueChange = onStationNameChanged,
                 label = { Text("Filling Station Name (Optional)") },
+                trailingIcon = {
+                    if (uiState.isLocating) {
+                        CircularProgressIndicator(modifier = Modifier.padding(12.dp).size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        IconButton(onClick = locatePump) {
+                            Icon(Icons.Default.MyLocation, contentDescription = "Find nearby pump")
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
+            if (uiState.latitude != null && uiState.longitude != null) {
+                LocationMap(
+                    points = listOf(LatLon(uiState.latitude, uiState.longitude)),
+                    modifier = Modifier.fillMaxWidth().height(140.dp)
+                )
+            }
 
             // 7. Notes
             OutlinedTextField(
@@ -339,14 +376,17 @@ fun AddFillUpContent(
                 contentAlignment = Alignment.Center
             ) {
                 if (uiState.receiptPath != null) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                    AsyncImage(
+                        model = uiState.receiptPath,
+                        contentDescription = "Receipt (tap to change)",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    FilledTonalIconButton(
+                        onClick = { onReceiptAttached(null) },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(32.dp)
                     ) {
-                        Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("Receipt attached", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                        Text("Tap to change", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Icon(Icons.Default.Close, contentDescription = "Remove receipt", modifier = Modifier.size(18.dp))
                     }
                 } else {
                     Column(

@@ -132,6 +132,20 @@ fun AddTripContent(
                 }
             }
 
+            // 1.5 Recorded route (automatic trips)
+            if (uiState.route.isNotEmpty()) {
+                LocationMap(points = uiState.route, modifier = Modifier.fillMaxWidth().height(200.dp))
+                val places = listOfNotNull(uiState.startPlace, uiState.endPlace).distinct()
+                if (places.isNotEmpty()) {
+                    Text(
+                        places.joinToString(" → "),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             // 2. Date Picker
             val sdf = remember { SimpleDateFormat("dd MMMM yyyy", Locale.getDefault()) }
             OutlinedTextField(
